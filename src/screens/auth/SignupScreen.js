@@ -21,12 +21,12 @@ import CustomButton from '../../components/common/CustomButton';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
-import { authAPI } from '../../services/api';
+import { authAPI, areasAPI } from '../../services/api';
 
 const { width, height } = Dimensions.get('window');
 
-// Islamabad Areas
-const ISLAMABAD_AREAS = [
+// Static fallback areas - defined outside component
+const STATIC_AREAS = [
   'F-6', 'F-7', 'F-8', 'F-10', 'F-11', 'G-6', 'G-7', 'G-8', 'G-9', 'G-10', 'G-11',
   'E-7', 'E-8', 'E-9', 'E-11', 'I-8', 'I-9', 'I-10', 'DHA Phase 1', 'DHA Phase 2',
   'Bahria Phase 7', 'Bahria Phase 8', 'Gulberg Residencia', 'Bani Gala'
@@ -46,6 +46,7 @@ const SignupScreen = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
+  const [areas, setAreas] = useState(STATIC_AREAS);
   const [alertConfig, setAlertConfig] = useState({
     title: '',
     message: '',
@@ -53,9 +54,25 @@ const SignupScreen = ({ navigation }) => {
     onConfirm: () => {},
   });
 
+  // Fetch areas from backend on mount
+  useEffect(() => {
+    const fetchAreas = async () => {
+      try {
+        const response = await areasAPI.getAll();
+        if (response.success && response.data && response.data.length > 0) {
+          const areaNames = response.data.map(area => area.name);
+          setAreas(areaNames);
+        }
+      } catch (err) {
+        console.log('Error fetching areas:', err);
+      }
+    };
+    fetchAreas();
+  }, []);
+
   const filteredAreas = areaSearch
-    ? ISLAMABAD_AREAS.filter(area => area.toLowerCase().includes(areaSearch.toLowerCase()))
-    : ISLAMABAD_AREAS;
+    ? areas.filter(area => area.toLowerCase().includes(areaSearch.toLowerCase()))
+    : areas;
 
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;

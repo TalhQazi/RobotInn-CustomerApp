@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput,
 import { useFocusEffect } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
 import { COLORS, GRADIENTS } from '../../theme/colors';
-import { ordersAPI } from '../../services/api';
+import { ordersAPI, areasAPI } from '../../services/api';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
@@ -12,8 +12,8 @@ import { getData, storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-// Islamabad Areas with Food Points
-const ISLAMABAD_AREAS = {
+// Static fallback areas
+const STATIC_AREAS = {
   'F-6': ['KFC F-6', 'Hardees F-6', 'Tehzeeb Bakers'],
   'F-7': ['KFC F-7', 'Pizza Hut F-7', 'Subway F-7'],
   'F-8': ['McDonald\'s F-8', 'Domino\'s Pizza', 'Ginyaki'],
@@ -105,6 +105,27 @@ const DashboardScreen = ({ navigation }) => {
   // Orders
   const [recentOrders, setRecentOrders] = useState([]);
   const [currentOrders, setCurrentOrders] = useState([]);
+
+  // Areas Data from Backend
+  const [areasData, setAreasData] = useState([]);
+  const [areasLoading, setAreasLoading] = useState(true);
+
+  // Fetch areas from backend
+  useEffect(() => {
+    const fetchAreas = async () => {
+      try {
+        const response = await areasAPI.getAll();
+        if (response.success && response.data) {
+          setAreasData(response.data);
+        }
+      } catch (err) {
+        console.log('Error fetching areas:', err);
+      } finally {
+        setAreasLoading(false);
+      }
+    };
+    fetchAreas();
+  }, []);
 
   // Initialize hero carousel
   useEffect(() => {
@@ -219,7 +240,15 @@ const DashboardScreen = ({ navigation }) => {
     ]);
   };
 
-  const filteredAreas = Object.keys(ISLAMABAD_AREAS).filter(area =>
+  // Get areas list - use backend data or fallback to static
+  const getAreasList = () => {
+    if (areasData.length > 0) {
+      return areasData.map(a => a.name);
+    }
+    return Object.keys(STATIC_AREAS);
+  };
+
+  const filteredAreas = getAreasList().filter(area =>
     area.toLowerCase().includes(areaSearch.toLowerCase())
   );
 
@@ -236,7 +265,16 @@ const DashboardScreen = ({ navigation }) => {
 
   const getAvailableStores = () => {
     if (!selectedArea) return [];
-    const stores = ISLAMABAD_AREAS[selectedArea] || [];
+    
+    // Find the selected area in backend data
+    const area = areasData.find(a => a.name === selectedArea);
+    if (area && area.stores && area.stores.length > 0) {
+      const storeNames = area.stores.map(s => s.name);
+      return ['Other', ...storeNames];
+    }
+    
+    // Fallback to static data
+    const stores = STATIC_AREAS[selectedArea] || [];
     return ['Other', ...stores];
   };
 
@@ -466,14 +504,14 @@ const DashboardScreen = ({ navigation }) => {
                       <Ionicons name="fast-food-outline" size={14} color="#666" /> Items:
                     </Text>
                     <Text style={styles.currentOrderItemsText} numberOfLines={2}>
-                      {Array.isArray(order.items) ? order.items.map(i => i.text || i).join(' • ') : order.items}
+                      {Array.isArray(order.items) ? order.items.map(i => i.name || i.text || JSON.stringify(i)).join(' • ') : order.items}
                     </Text>
                   </View>
 
                   <View style={styles.currentOrderStore}>
                     <Ionicons name="storefront-outline" size={14} color="#666" />
                     <Text style={styles.currentOrderStoreText} numberOfLines={1}>
-                      {order.store || 'Unknown Store'} • {order.area}
+                      {order.pickup || 'Unknown Store'} • {order.area}
                     </Text>
                   </View>
 
@@ -773,10 +811,10 @@ const DashboardScreen = ({ navigation }) => {
 
                     <View style={styles.orderDetails}>
                       <Text style={styles.orderStore} numberOfLines={1}>
-                        <Ionicons name="storefront-outline" size={14} color="#666" />{' '}{order.store || 'Unknown Store'}
+                        <Ionicons name="storefront-outline" size={14} color="#666" />{' '}{order.pickup || 'Unknown Store'}
                       </Text>
                       <Text style={styles.orderItems} numberOfLines={2}>
-                        {Array.isArray(order.items) ? order.items.map(i => i.text || i).join(' • ') : order.items}
+                        {Array.isArray(order.items) ? order.items.map(i => i.name || i.text || JSON.stringify(i)).join(' • ') : order.items}
                       </Text>
                     </View>
 
@@ -789,13 +827,13 @@ const DashboardScreen = ({ navigation }) => {
                         onPress={() => {
                           if (order.items) {
                             const itemsArray = Array.isArray(order.items)
-                              ? order.items.map(item => ({ id: Date.now().toString() + Math.random(), text: item.text || item, completed: false }))
+                              ? order.items.map(item => ({ id: Date.now().toString() + Math.random(), text: item.name || item.text || JSON.stringify(item), completed: false }))
                               : [{ id: Date.now().toString(), text: order.items, completed: false }];
                             setOrderItems(itemsArray);
                           }
                           setSelectedArea(order.area || '');
-                          setSelectedStore(order.store || '');
-                          setAddress(order.address || '');
+                          setSelectedStore(order.pickup || '');
+                          setAddress(order.dropoff || '');
                           setIsRobotStore(order.isRobotStore || false);
                           Alert.alert('Reorder', 'Order details loaded! Review and add to cart.');
                         }}
