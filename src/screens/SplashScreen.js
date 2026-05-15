@@ -1,11 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, Image, Dimensions } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { getData, removeData } from '../storage/asyncStorage';
+import { ASYNC_STORAGE_KEYS } from '../utils/constants';
+import { authAPI } from '../services/api';
+import { resetToAuth, resetToMain } from '../navigation/navigationRef';
 
 const { width, height } = Dimensions.get('window');
 
-const SplashScreen = ({ navigation }) => {
-  // Animation values
+const SplashScreen = () => {
   const rotateValue = useRef(new Animated.Value(0)).current;
   const scaleValue = useRef(new Animated.Value(0.3)).current;
   const opacityValue = useRef(new Animated.Value(0)).current;
@@ -13,7 +16,6 @@ const SplashScreen = ({ navigation }) => {
   const pulseValue = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Parallel animations for logo
     Animated.parallel([
       Animated.timing(rotateValue, {
         toValue: 1,
@@ -40,7 +42,6 @@ const SplashScreen = ({ navigation }) => {
       }),
     ]).start();
 
-    // Continuous pulse animation for outer ring
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseValue, {
@@ -58,11 +59,47 @@ const SplashScreen = ({ navigation }) => {
       ])
     ).start();
 
-    const timer = setTimeout(() => {
-      navigation.replace('Auth');
-    }, 2800);
+    let cancelled = false;
 
-    return () => clearTimeout(timer);
+    const resolveInitialRoute = async () => {
+      const minSplashMs = 2200;
+      const start = Date.now();
+
+      let goMain = false;
+      try {
+        const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
+        if (token) {
+          try {
+            await authAPI.getMe();
+            goMain = true;
+          } catch {
+            await removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
+            await removeData(ASYNC_STORAGE_KEYS.USER_DATA);
+          }
+        }
+      } catch (e) {
+        console.log('splash auth check', e);
+      }
+
+      const elapsed = Date.now() - start;
+      if (elapsed < minSplashMs) {
+        await new Promise((r) => setTimeout(r, minSplashMs - elapsed));
+      }
+
+      if (cancelled) return;
+
+      if (goMain) {
+        resetToMain();
+      } else {
+        resetToAuth();
+      }
+    };
+
+    resolveInitialRoute();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const spin = rotateValue.interpolate({
@@ -77,7 +114,6 @@ const SplashScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Animated background circles */}
       <View style={styles.circlesContainer}>
         {[...Array(3)].map((_, i) => (
           <Animated.View
@@ -106,7 +142,6 @@ const SplashScreen = ({ navigation }) => {
           },
         ]}
       >
-        {/* Outer Ring with pulse effect */}
         <Animated.View
           style={[
             styles.outerRing,
@@ -115,9 +150,7 @@ const SplashScreen = ({ navigation }) => {
             },
           ]}
         >
-          {/* Inner Ring */}
           <View style={styles.innerRing}>
-            {/* Logo Container with rotation */}
             <Animated.View
               style={[
                 styles.logoContainer,
@@ -135,13 +168,11 @@ const SplashScreen = ({ navigation }) => {
           </View>
         </Animated.View>
 
-        {/* Brand Name with gradient text effect */}
         <View style={styles.textContainer}>
           <Text style={styles.title}>RobotInn</Text>
           <View style={styles.divider} />
           <Text style={styles.subtitle}>Delivering Happiness</Text>
-          
-          {/* Animated dots */}
+
           <View style={styles.dotsContainer}>
             {[...Array(3)].map((_, i) => (
               <Animated.View
@@ -169,7 +200,6 @@ const SplashScreen = ({ navigation }) => {
         </View>
       </Animated.View>
 
-      {/* Footer with version info */}
       <Animated.View
         style={[
           styles.footer,

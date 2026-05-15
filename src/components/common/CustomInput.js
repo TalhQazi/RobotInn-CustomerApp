@@ -11,26 +11,39 @@ const CustomInput = ({
   secureTextEntry,
   error,
   keyboardType = 'default',
+  autoCapitalize = 'sentences',
+  autoCorrect = true,
+  icon,
+  rightIcon,
   style,
   containerStyle,
+  ...rest
 }) => {
   return (
     <View style={[styles.container, containerStyle]}>
-      {label && <Text style={styles.label}>{label}</Text>}
-      <TextInput
-        style={[
-          styles.input,
-          error && styles.inputError,
-          style,
-        ]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={COLORS.textSecondary}
-        secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType}
-      />
-      {error && <Text style={styles.errorText}>{error}</Text>}
+      {label ? <Text style={styles.label}>{label}</Text> : null}
+      <View style={[styles.inputWrapper, error && styles.inputErrorBorder]}>
+        {icon ? <View style={styles.leftIcon}>{icon}</View> : null}
+        <TextInput
+          style={[
+            styles.input,
+            icon ? styles.inputWithLeftIcon : null,
+            rightIcon ? styles.inputWithRightIcon : null,
+            style,
+          ]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.textSecondary}
+          secureTextEntry={secureTextEntry}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCorrect}
+          {...rest}
+        />
+        {rightIcon ? <View style={styles.rightIcon}>{rightIcon}</View> : null}
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
 };
@@ -46,18 +59,36 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
     fontWeight: '500',
   },
-  input: {
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     height: 50,
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: BORDER_RADIUS.md,
+  },
+  inputErrorBorder: {
+    borderColor: 'red',
+  },
+  leftIcon: {
+    paddingLeft: SPACING.md,
+  },
+  rightIcon: {
+    paddingRight: SPACING.md,
+  },
+  input: {
+    flex: 1,
+    height: '100%',
     paddingHorizontal: SPACING.md,
     fontSize: 16,
     color: COLORS.textPrimary,
   },
-  inputError: {
-    borderColor: 'red',
+  inputWithLeftIcon: {
+    paddingLeft: SPACING.sm,
+  },
+  inputWithRightIcon: {
+    paddingRight: SPACING.xs,
   },
   errorText: {
     color: 'red',

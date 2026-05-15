@@ -1,28 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Image, Modal } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
 import CustomButton from '../../components/common/CustomButton';
-import { getData, storeData, clearAll } from '../../storage/asyncStorage';
+import { getData, storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
 import { authAPI } from '../../services/api';
+import { resetToAuth } from '../../navigation/navigationRef';
+import { useNotificationUnread } from '../../context/NotificationUnreadContext';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const ProfileScreen = ({ navigation }) => {
+  const { unreadCount, refreshUnreadCount } = useNotificationUnread();
   const [user, setUser] = useState({ name: 'Fawad', email: 'fawad@example.com', profilePic: null });
   const [aboutModalVisible, setAboutModalVisible] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
 
-  // Menu items from sidebar
-  const menuItems = [
-    { icon: 'home-outline', label: 'Home', screen: 'Dashboard', color: '#2EC4B6' },
-    { icon: 'receipt-outline', label: 'Order History', screen: 'OrderHistory', color: '#F59E0B' },
-    { icon: 'location-outline', label: 'Saved Addresses', screen: 'MyAddresses', color: '#4ECDC4' },
-    { icon: 'notifications-outline', label: 'Notifications', screen: 'Notifications', color: '#A78BFA' },
-    { icon: 'chatbubble-outline', label: 'Messages', screen: 'Messages', color: '#60A5FA' },
-    { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#94A3B8' },
-  ];
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshUnreadCount();
+    }, [refreshUnreadCount])
+  );
+
+  const menuItems = useMemo(
+    () => [
+      { icon: 'home-outline', label: 'Home', screen: 'Dashboard', color: '#2EC4B6' },
+      { icon: 'receipt-outline', label: 'Order History', screen: 'OrderHistory', color: '#F59E0B' },
+      { icon: 'location-outline', label: 'Saved Addresses', screen: 'MyAddresses', color: '#4ECDC4' },
+      { icon: 'notifications-outline', label: 'Notifications', screen: 'Notifications', color: '#A78BFA', badge: unreadCount },
+      { icon: 'chatbubble-outline', label: 'Messages', screen: 'Messages', color: '#60A5FA' },
+      { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#94A3B8' },
+    ],
+    [unreadCount]
+  );
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -64,9 +76,9 @@ const ProfileScreen = ({ navigation }) => {
         { 
           text: 'Logout', 
           onPress: async () => {
-            await clearAll();
-            navigation.replace('Auth');
-          } 
+            await authAPI.logout();
+            resetToAuth();
+          }, 
         }
       ]
     );
@@ -88,7 +100,7 @@ const ProfileScreen = ({ navigation }) => {
     ]);
   };
 
-  const MenuItem = ({ icon, title, onPress, color, isFirst, isLast }) => (
+  const MenuItem = ({ icon, title, onPress, color, isFirst, isLast, badge = 0 }) => (
     <TouchableOpacity 
       onPress={onPress} 
       style={[
@@ -102,6 +114,11 @@ const ProfileScreen = ({ navigation }) => {
           <Ionicons name={icon} size={22} color={color} />
         </View>
         <Text style={styles.menuItemText}>{title}</Text>
+        {badge > 0 && (
+          <View style={styles.menuBadge}>
+            <Text style={styles.menuBadgeText}>{badge > 99 ? '99+' : badge}</Text>
+          </View>
+        )}
       </View>
       <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
     </TouchableOpacity>
@@ -192,9 +209,18 @@ const ProfileScreen = ({ navigation }) => {
                 icon={item.icon}
                 title={item.label}
                 color={item.color}
+                badge={item.badge || 0}
                 isFirst={index === 0}
                 isLast={index === menuItems.length - 1}
-                onPress={() => navigation.navigate(item.screen)}
+                onPress={() => {
+                  if (item.screen === 'Dashboard' && navigation.getParent()) {
+                    navigation.getParent().navigate('Dashboard');
+                  } else if (item.screen === 'Messages' && navigation.getParent()) {
+                    navigation.getParent().navigate('Messages');
+                  } else {
+                    navigation.navigate(item.screen);
+                  }
+                }}
               />
             ))}
           </View>
@@ -426,6 +452,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.textPrimary,
     fontWeight: '500',
+  },
+  menuBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    marginLeft: SPACING.xs,
+  },
+  menuBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   logoutButton: {
     marginHorizontal: SPACING.lg,

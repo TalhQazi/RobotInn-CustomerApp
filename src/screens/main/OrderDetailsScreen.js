@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Dimensions,
   Platform,
+  Alert,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Header from '../../components/common/Header';
@@ -56,13 +57,13 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
   const [nowTick, setNowTick] = useState(Date.now());
 
-  const isPending = order.status === ORDER_STATUS.PENDING || order.status === 'Pending';
+  const isPending = order.status === ORDER_STATUS.PENDING || order.status === 'pending' || order.status === 'Pending';
+  const riderId = order.rider?.id || order.riderId;
+  const statusLower = String(order.status || '').toLowerCase();
   const showChatWithRider =
-    order.status === ORDER_STATUS.IN_PROGRESS ||
-    order.status === ORDER_STATUS.DELIVERED ||
-    order.status === 'In Progress' ||
-    order.status === 'Delivered' ||
-    order.status === 'Completed';
+    !!riderId &&
+    statusLower !== 'pending' &&
+    statusLower !== 'cancelled';
 
   useEffect(() => {
     if (isPending) return;
@@ -206,7 +207,17 @@ const OrderDetailsScreen = ({ navigation, route }) => {
           <TouchableOpacity
             activeOpacity={0.9}
             style={styles.chatButton}
-            onPress={() => navigation.navigate('Chat')}
+            onPress={() => {
+              if (!riderId) {
+                Alert.alert('No rider', 'A rider has not been assigned to this order yet.');
+                return;
+              }
+              navigation.navigate('Chat', {
+                participantId: String(riderId),
+                contactName: riderName,
+                orderCode: order.orderId,
+              });
+            }}
           >
             <View style={styles.chatIconContainer}>
               <Ionicons name="chatbubble-ellipses" size={20} color="#2EC4B6" />
@@ -244,9 +255,20 @@ const OrderDetailsScreen = ({ navigation, route }) => {
                 <Text style={styles.riderPhone}>{riderPhone}</Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.callButton}>
-              <Ionicons name="chatbox-outline" size={18} color="#fff" />
-            </TouchableOpacity>
+            {showChatWithRider && (
+              <TouchableOpacity
+                style={styles.callButton}
+                onPress={() => {
+                  navigation.navigate('Chat', {
+                    participantId: String(riderId),
+                    contactName: riderName,
+                    orderCode: order.orderId,
+                  });
+                }}
+              >
+                <Ionicons name="chatbox-outline" size={18} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.divider} />

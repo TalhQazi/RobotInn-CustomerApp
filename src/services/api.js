@@ -175,6 +175,15 @@ export const usersAPI = {
     return handleResponse(response);
   },
 
+  updateAddress: async (id, addressData) => {
+    const response = await fetch(`${BASE_URL}/users/addresses/${id}`, {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(addressData),
+    });
+    return handleResponse(response);
+  },
+
   deleteAddress: async (id) => {
     const response = await fetch(`${BASE_URL}/users/addresses/${id}`, {
       method: 'DELETE',
@@ -192,6 +201,67 @@ export const areasAPI = {
   },
 };
 
+// Chat APIs
+export const chatAPI = {
+  getConversations: async () => {
+    const response = await fetch(`${BASE_URL}/chat/conversations`, {
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  startConversation: async (participantId, orderId) => {
+    const response = await fetch(`${BASE_URL}/chat/conversations`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({
+        participantId,
+        ...(orderId ? { orderId } : {}),
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  getMessages: async (conversationId, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const response = await fetch(
+      `${BASE_URL}/chat/conversations/${conversationId}/messages?${queryString}`,
+      { headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  sendMessage: async (conversationId, text) => {
+    const response = await fetch(`${BASE_URL}/chat/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ text }),
+    });
+    return handleResponse(response);
+  },
+
+  markRead: async (conversationId) => {
+    const response = await fetch(`${BASE_URL}/chat/conversations/${conversationId}/read`, {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+/** Start or reuse chat with assigned rider (from order details). */
+export async function openRiderChat({ riderId, orderCode, autoMessage }) {
+  const res = await chatAPI.startConversation(riderId, orderCode);
+  const conversationId = res.data?.id;
+  if (!conversationId) {
+    throw new Error('Could not open conversation');
+  }
+  if (autoMessage?.trim()) {
+    await chatAPI.sendMessage(conversationId, autoMessage.trim());
+  }
+  return conversationId;
+}
+
 export default {
   auth: authAPI,
   products: productsAPI,
@@ -199,4 +269,5 @@ export default {
   notifications: notificationsAPI,
   users: usersAPI,
   areas: areasAPI,
+  chat: chatAPI,
 };

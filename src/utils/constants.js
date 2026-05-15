@@ -14,3 +14,6 @@ export const ORDER_STATUS = {
   IN_PROGRESS: 'In Progress',
   DELIVERED: 'Delivered',
 };
+
+export const GOOGLE_MAPS_API_KEY = 'AIzaSyAbCnEye8zcIw9J-_mK55liYpeTlWLTkRY';
+export const GOOGLE_MAPS_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';

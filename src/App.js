@@ -8,6 +8,7 @@ import 'react-native-gesture-handler';
 import SplashScreen from './screens/SplashScreen';
 import AuthNavigator from './navigation/AuthNavigator';
 import AppNavigator from './navigation/AppNavigator';
+import { navigationRef } from './navigation/navigationRef';
 import { COLORS } from './theme/colors';
 
 const Stack = createStackNavigator();
@@ -16,7 +17,7 @@ const App = () => {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
           initialRouteName="Splash"
           screenOptions={{

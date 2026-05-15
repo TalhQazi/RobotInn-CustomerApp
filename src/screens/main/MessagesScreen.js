@@ -1,101 +1,180 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, SafeAreaView, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  SafeAreaView,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  TextInput,
+} from 'react-native';
+import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { chatAPI } from '../../services/api';
 
-const MessagesScreen = ({ navigation }) => {
-  const contacts = [
-    {
-      id: '1',
-      name: 'Delivery Support',
-      avatar: null,
-      lastMessage: 'Your robot is arriving soon!',
-      time: '10:30 AM',
-      unread: 2,
-      online: true,
-    },
-    {
-      id: '2',
-      name: 'Restaurant Admin',
-      avatar: null,
-      lastMessage: 'Order #102 is being prepared.',
-      time: 'Yesterday',
-      unread: 0,
-      online: false,
-    },
-    {
-      id: '3',
-      name: 'Robot #42',
-      avatar: null,
-      lastMessage: 'Waiting at your door.',
-      time: 'Monday',
-      unread: 1,
-      online: true,
-    },
-    {
-      id: '4',
-      name: 'Customer Service',
-      avatar: null,
-      lastMessage: 'How was your experience?',
-      time: '11:45 AM',
-      unread: 0,
-      online: true,
-    },
-    {
-      id: '5',
-      name: 'Ahmed (Driver)',
-      avatar: null,
-      lastMessage: 'I\'m on my way!',
-      time: '09:20 AM',
-      unread: 3,
-      online: false,
-    },
-  ];
+function formatListTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const sameDay =
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
+    if (sameDay) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
-  const getInitials = (name) => {
-    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+const MessagesScreen = () => {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const loadInbox = useCallback(async () => {
+    try {
+      const res = await chatAPI.getConversations();
+      if (res.success && Array.isArray(res.data)) {
+        setConversations(
+          res.data.map((c) => ({
+            id: String(c.id),
+            participantId: String(c.participantId || ''),
+            participantName: c.participantName || 'Rider',
+            participantType: c.participantType,
+            lastMessage: c.lastMessage || '',
+            lastMessageTime: formatListTime(c.lastMessageTime),
+            unreadCount: c.unreadCount || 0,
+            orderId: c.orderId,
+            avatarInitials: c.avatarInitials,
+          }))
+        );
+      } else {
+        setConversations([]);
+      }
+    } catch (e) {
+      console.log('load inbox', e);
+      setConversations([]);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let pollId = null;
+      const run = async () => {
+        setLoading(true);
+        await loadInbox();
+        setLoading(false);
+
+        const params = route.params || {};
+        if (params.riderId || params.conversationId) {
+          navigation.navigate('Chat', {
+            conversationId: params.conversationId,
+            participantId: params.riderId,
+            contactName: params.riderName || 'Rider',
+            orderCode: params.orderCode,
+          });
+          navigation.setParams({
+            riderId: undefined,
+            riderName: undefined,
+            orderCode: undefined,
+            conversationId: undefined,
+          });
+        }
+      };
+
+      run();
+      pollId = setInterval(loadInbox, 8000);
+
+      return () => {
+        if (pollId) clearInterval(pollId);
+      };
+    }, [loadInbox, route.params?.riderId, route.params?.conversationId, navigation])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadInbox();
+    setRefreshing(false);
   };
+
+  const filtered = conversations.filter((c) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      c.participantName.toLowerCase().includes(q) ||
+      (c.orderId && String(c.orderId).toLowerCase().includes(q)) ||
+      c.lastMessage.toLowerCase().includes(q)
+    );
+  });
+
+  const getInitials = (name) =>
+    (name || '?')
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
 
   const getRandomColor = (id) => {
     const colors = ['#2EC4B6', '#FF8C42', '#6C5CE7', '#00B894', '#E17055', '#74B9FF'];
-    return colors[parseInt(id) % colors.length];
+    const n = parseInt(String(id).replace(/\D/g, '').slice(-2) || '0', 10);
+    return colors[n % colors.length];
+  };
+
+  const openChat = (item) => {
+    navigation.navigate('Chat', {
+      conversationId: item.id,
+      participantId: item.participantId,
+      contactName: item.participantName,
+      orderCode: item.orderId,
+    });
   };
 
   const renderContactItem = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.contactItem}
-      onPress={() => navigation.navigate('Chat', { 
-        contactId: item.id, 
-        contactName: item.name,
-        avatar: item.avatar,
-        online: item.online 
-      })}
-    >
+    <TouchableOpacity style={styles.contactItem} onPress={() => openChat(item)}>
       <View style={styles.avatarContainer}>
-        {item.avatar ? (
-          <Image source={{ uri: item.avatar }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatarPlaceholder, { backgroundColor: getRandomColor(item.id) }]}>
-            <Text style={styles.avatarText}>{getInitials(item.name)}</Text>
-          </View>
-        )}
-        {item.online && <View style={styles.onlineIndicator} />}
+        <View style={[styles.avatarPlaceholder, { backgroundColor: getRandomColor(item.id) }]}>
+          <Text style={styles.avatarText}>{item.avatarInitials || getInitials(item.participantName)}</Text>
+        </View>
+        {item.participantType === 'rider' && <View style={styles.riderDot} />}
       </View>
 
       <View style={styles.contactInfo}>
         <View style={styles.contactHeader}>
-          <Text style={styles.contactName}>{item.name}</Text>
-          <Text style={[styles.timeText, item.unread > 0 && styles.unreadTime]}>{item.time}</Text>
-        </View>
-        <View style={styles.messageRow}>
-          <Text style={[styles.lastMessage, item.unread > 0 && styles.unreadMessage]} numberOfLines={1}>
-            {item.lastMessage}
+          <Text style={styles.contactName} numberOfLines={1}>
+            {item.participantName}
           </Text>
-          {item.unread > 0 && (
+          <Text style={[styles.timeText, item.unreadCount > 0 && styles.unreadTime]}>
+            {item.lastMessageTime}
+          </Text>
+        </View>
+        {item.orderId ? (
+          <Text style={styles.orderTag}>Order #{item.orderId}</Text>
+        ) : null}
+        <View style={styles.messageRow}>
+          <Text
+            style={[styles.lastMessage, item.unreadCount > 0 && styles.unreadMessage]}
+            numberOfLines={1}
+          >
+            {item.lastMessage || 'No messages yet'}
+          </Text>
+          {item.unreadCount > 0 && (
             <View style={styles.unreadBadge}>
-              <Text style={styles.unreadText}>{item.unread}</Text>
+              <Text style={styles.unreadText}>
+                {item.unreadCount > 99 ? '99+' : item.unreadCount}
+              </Text>
             </View>
           )}
         </View>
@@ -106,20 +185,48 @@ const MessagesScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <Header navigation={navigation} />
-      
-      <FlatList
-        data={contacts}
-        renderItem={renderContactItem}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View style={styles.searchBar}>
-            <Ionicons name="search-outline" size={20} color={COLORS.textSecondary} />
-            <Text style={styles.searchText}>Search contacts...</Text>
-          </View>
-        }
-      />
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          renderItem={renderContactItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.listContent,
+            filtered.length === 0 && styles.emptyList,
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+          }
+          ListHeaderComponent={
+            <View style={styles.searchBar}>
+              <Ionicons name="search-outline" size={20} color={COLORS.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search riders or orders..."
+                placeholderTextColor={COLORS.textSecondary}
+                value={search}
+                onChangeText={setSearch}
+              />
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubbles-outline" size={60} color={COLORS.textSecondary} />
+              <Text style={styles.emptyTitle}>No messages yet</Text>
+              <Text style={styles.emptyHint}>
+                When a rider accepts your order, open the order and tap Chat with rider. Conversations
+                will appear here.
+              </Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -129,9 +236,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   listContent: {
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.xl,
+  },
+  emptyList: {
+    flexGrow: 1,
   },
   searchBar: {
     flexDirection: 'row',
@@ -139,14 +254,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 4,
+    paddingVertical: SPACING.sm + 2,
     marginBottom: SPACING.md,
     marginTop: SPACING.sm,
   },
-  searchText: {
+  searchInput: {
+    flex: 1,
     marginLeft: SPACING.sm,
-    color: COLORS.textSecondary,
     fontSize: 16,
+    color: COLORS.textPrimary,
+    paddingVertical: 0,
   },
   contactItem: {
     flexDirection: 'row',
@@ -157,11 +274,6 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     position: 'relative',
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
   },
   avatarPlaceholder: {
     width: 56,
@@ -175,7 +287,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
   },
-  onlineIndicator: {
+  riderDot: {
     position: 'absolute',
     bottom: 2,
     right: 2,
@@ -194,12 +306,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   contactName: {
     fontSize: 17,
     fontWeight: '600',
     color: COLORS.textPrimary,
+    flex: 1,
+    marginRight: SPACING.sm,
   },
   timeText: {
     fontSize: 12,
@@ -208,6 +322,12 @@ const styles = StyleSheet.create({
   unreadTime: {
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  orderTag: {
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   messageRow: {
     flexDirection: 'row',
@@ -237,6 +357,24 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 12,
     fontWeight: '700',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginTop: SPACING.md,
+  },
+  emptyHint: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
+    lineHeight: 20,
   },
 });
 

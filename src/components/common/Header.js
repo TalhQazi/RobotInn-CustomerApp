@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -17,6 +18,7 @@ import { SPACING } from '../../theme/spacing';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
+import { useNotificationUnread } from '../../context/NotificationUnreadContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -29,6 +31,7 @@ const Header = ({
 }) => {
   const [user, setUser] = useState({ name: 'Fawad', email: 'fawad@example.com' });
   const [sidebarVisible, setSidebarVisible] = useState(false);
+  const { unreadCount, refreshUnreadCount } = useNotificationUnread();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -38,20 +41,64 @@ const Header = ({
     fetchUser();
   }, []);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshUnreadCount();
+    }, [refreshUnreadCount])
+  );
+
+  useEffect(() => {
+    if (sidebarVisible) {
+      refreshUnreadCount();
+    }
+  }, [sidebarVisible, refreshUnreadCount]);
+
   const statsData = [
     { icon: 'receipt-outline', label: 'Total Orders', value: '12', color: '#554a4aff', progress: 0.8 },
     { icon: 'time-outline', label: 'Active', value: '2', color: '#c7b407ff', progress: 0.4 },
     { icon: 'checkmark-circle-outline', label: 'Completed', value: '10', color: '#4ECDC4', progress: 0.9 },
   ];
 
-  const menuItems = [
-    { icon: 'person-outline',        label: 'My Profile',      subtitle: 'Manage your profile details',  screen: 'Profile',       color: '#FF6B6B', iconBg: '#FFF0F0' },
-    { icon: 'time-outline',          label: 'Order History',   subtitle: 'View your past orders',        screen: 'OrderHistory',  color: '#FFA235', iconBg: '#FFF5EB' },
-    { icon: 'location-outline',      label: 'Saved Addresses', subtitle: 'Manage your saved locations',  screen: 'MyAddresses',   color: '#4ECDC4', iconBg: '#E8FAF8' },
-    { icon: 'notifications-outline', label: 'Notifications',   subtitle: 'View all notifications',       screen: 'Notifications', color: '#A78BFA', iconBg: '#F3EEFF', badge: 0 },
-    { icon: 'chatbubble-outline',    label: 'Messages',        subtitle: 'Chat with support',            screen: 'Messages',      color: '#60A5FA', iconBg: '#EBF4FF', badge: 0 },
-    { icon: 'settings-outline',      label: 'Settings',        subtitle: 'Manage app preferences',       screen: 'Settings',      color: '#94A3B8', iconBg: '#F0F2F5' },
-  ];
+  const menuItems = useMemo(
+    () => [
+      { icon: 'person-outline', label: 'My Profile', subtitle: 'Manage your profile details', screen: 'Profile', color: '#FF6B6B', iconBg: '#FFF0F0' },
+      { icon: 'time-outline', label: 'Order History', subtitle: 'View your past orders', screen: 'OrderHistory', color: '#FFA235', iconBg: '#FFF5EB' },
+      { icon: 'location-outline', label: 'Saved Addresses', subtitle: 'Manage your saved locations', screen: 'MyAddresses', color: '#4ECDC4', iconBg: '#E8FAF8' },
+      { icon: 'notifications-outline', label: 'Notifications', subtitle: 'View all notifications', screen: 'Notifications', color: '#A78BFA', iconBg: '#F3EEFF', badge: unreadCount },
+      { icon: 'chatbubble-outline', label: 'Messages', subtitle: 'Chat with support', screen: 'Messages', color: '#60A5FA', iconBg: '#EBF4FF', badge: 0 },
+      { icon: 'settings-outline', label: 'Settings', subtitle: 'Manage app preferences', screen: 'Settings', color: '#94A3B8', iconBg: '#F0F2F5' },
+    ],
+    [unreadCount]
+  );
+
+  const navigateToNotifications = () => {
+    if (navigation.getParent()) {
+      navigation.getParent().navigate('Dashboard', { screen: 'Notifications' });
+    } else {
+      navigation.navigate('Notifications');
+    }
+  };
+
+  const handleMenuPress = (item) => {
+    setSidebarVisible(false);
+    if (item.screen === 'Notifications') {
+      navigateToNotifications();
+      return;
+    }
+    if (item.screen === 'Profile' && navigation.getParent()) {
+      navigation.getParent().navigate('Profile', { screen: 'ProfileHome' });
+      return;
+    }
+    if (item.screen === 'Messages' && navigation.getParent()) {
+      navigation.getParent().navigate('Messages');
+      return;
+    }
+    if (item.screen) {
+      navigation.navigate(item.screen);
+    }
+  };
+
+  const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
   const renderSidebar = () => (
     <Modal
@@ -114,10 +161,7 @@ const Header = ({
                 <TouchableOpacity
                   key={index}
                   style={styles.menuItem}
-                  onPress={() => {
-                    setSidebarVisible(false);
-                    if (item.screen) navigation.navigate(item.screen);
-                  }}
+                  onPress={() => handleMenuPress(item)}
                   activeOpacity={0.7}
                 >
                   {/* Colored rounded icon */}
@@ -221,18 +265,15 @@ const Header = ({
         <View style={styles.headerRightContainer}>
           <TouchableOpacity
             style={styles.headerIconButton}
-            onPress={() => {
-              // Navigate to parent first, then to Notifications (works from all tabs)
-              if (navigation.getParent()) {
-                navigation.getParent().navigate('Dashboard', { screen: 'Notifications' });
-              } else {
-                navigation.navigate('Notifications');
-              }
-            }}
+            onPress={navigateToNotifications}
             activeOpacity={0.9}
           >
             <Ionicons name="notifications-outline" size={22} color="#fff" />
-            <View style={styles.notificationDot} />
+            {unreadCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{badgeLabel}</Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -357,16 +398,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notificationDot: {
+  notificationBadge: {
     position: 'absolute',
-    top: 8,
-    right: 10,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: '#FF4444',
     borderWidth: 2,
     borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
 
   // ─── Sidebar shell (unchanged) ────────────────────────────────────

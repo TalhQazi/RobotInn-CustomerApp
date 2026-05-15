@@ -11,77 +11,136 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
-import CustomButton from '../../components/common/CustomButton';
+import { usersAPI } from '../../services/api';
 import { getData, storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
+import { getCurrentLocationWithAddress } from '../../utils/location';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const MyAddressesScreen = ({ navigation }) => {
   const [addresses, setAddresses] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAddress, setEditingAddress] = useState(null);
-  
-  // Form states
   const [title, setTitle] = useState('');
   const [address, setAddress] = useState('');
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   useEffect(() => {
     loadAddresses();
   }, []);
 
   const loadAddresses = async () => {
-    const savedAddresses = await getData(ASYNC_STORAGE_KEYS.ADDRESSES);
-    if (savedAddresses) {
-      setAddresses(savedAddresses);
+    setLoading(true);
+    try {
+      const response = await usersAPI.getAddresses();
+      if (response?.data) {
+        const formattedAddresses = response.data.map((addr) => ({
+          ...addr,
+          id: addr.addressId || addr._id || addr.id,
+        }));
+        setAddresses(formattedAddresses);
+        await storeData(ASYNC_STORAGE_KEYS.ADDRESSES, formattedAddresses);
+      }
+    } catch (error) {
+      console.error('Load addresses error:', error);
+      const savedAddresses = await getData(ASYNC_STORAGE_KEYS.ADDRESSES);
+      if (savedAddresses) {
+        setAddresses(savedAddresses);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   const saveAddresses = async (newAddresses) => {
-    await storeData(ASYNC_STORAGE_KEYS.ADDRESSES, newAddresses);
     setAddresses(newAddresses);
+    await storeData(ASYNC_STORAGE_KEYS.ADDRESSES, newAddresses);
   };
 
-  const handleAddAddress = () => {
+  const handleUseCurrentLocation = async () => {
+    setLocationLoading(true);
+    try {
+      const { lat, lng, address: formattedAddress } = await getCurrentLocationWithAddress();
+      setCurrentLocation({ lat, lng });
+      setAddress(formattedAddress);
+      setUseCurrentLocation(true);
+    } catch (error) {
+      console.error('Location error:', error);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const handleAddAddress = async () => {
     if (!title.trim() || !address.trim()) {
       Alert.alert('Error', 'Please enter both title and address');
       return;
     }
 
-    const newAddress = {
-      id: Date.now().toString(),
-      title: title.trim(),
-      address: address.trim(),
-      isCurrentLocation: useCurrentLocation,
-      createdAt: new Date().toISOString(),
-    };
-
-    const updatedAddresses = [...addresses, newAddress];
-    saveAddresses(updatedAddresses);
-    resetForm();
-    setShowAddModal(false);
+    setSaving(true);
+    try {
+      const payload = {
+        title: title.trim(),
+        address: address.trim(),
+        isCurrentLocation: useCurrentLocation,
+        location: currentLocation || undefined,
+      };
+      const response = await usersAPI.addAddress(payload);
+      const newAddress = {
+        ...response.data,
+        id: response.data.addressId || response.data._id || response.data.id,
+      };
+      const updatedAddresses = [...addresses, newAddress];
+      await saveAddresses(updatedAddresses);
+      resetForm();
+      setShowAddModal(false);
+    } catch (error) {
+      console.error('Add address error:', error);
+      Alert.alert('Save failed', error.message || 'Unable to save address');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleUpdateAddress = () => {
+  const handleUpdateAddress = async () => {
     if (!title.trim() || !address.trim()) {
       Alert.alert('Error', 'Please enter both title and address');
       return;
     }
 
-    const updatedAddresses = addresses.map((addr) =>
-      addr.id === editingAddress.id
-        ? { ...addr, title: title.trim(), address: address.trim(), isCurrentLocation: useCurrentLocation }
-        : addr
-    );
-
-    saveAddresses(updatedAddresses);
-    resetForm();
-    setShowAddModal(false);
-    setEditingAddress(null);
+    setSaving(true);
+    try {
+      const payload = {
+        title: title.trim(),
+        address: address.trim(),
+        isCurrentLocation: useCurrentLocation,
+        location: currentLocation || undefined,
+      };
+      const response = await usersAPI.updateAddress(editingAddress.addressId || editingAddress.id, payload);
+      const updatedAddresses = addresses.map((addr) =>
+        addr.id === (editingAddress.addressId || editingAddress.id)
+          ? { ...addr, ...response.data, id: response.data.addressId || addr.id }
+          : addr
+      );
+      await saveAddresses(updatedAddresses);
+      resetForm();
+      setEditingAddress(null);
+      setShowAddModal(false);
+    } catch (error) {
+      console.error('Update address error:', error);
+      Alert.alert('Update failed', error.message || 'Unable to update address');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDeleteAddress = (id) => {
@@ -93,9 +152,18 @@ const MyAddressesScreen = ({ navigation }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            const updatedAddresses = addresses.filter((addr) => addr.id !== id);
-            saveAddresses(updatedAddresses);
+          onPress: async () => {
+            setSaving(true);
+            try {
+              await usersAPI.deleteAddress(id);
+              const updatedAddresses = addresses.filter((addr) => addr.id !== id);
+              await saveAddresses(updatedAddresses);
+            } catch (error) {
+              console.error('Delete address error:', error);
+              Alert.alert('Delete failed', error.message || 'Unable to delete address');
+            } finally {
+              setSaving(false);
+            }
           },
         },
       ]
@@ -107,6 +175,7 @@ const MyAddressesScreen = ({ navigation }) => {
     setTitle(addr.title);
     setAddress(addr.address);
     setUseCurrentLocation(addr.isCurrentLocation || false);
+    setCurrentLocation(addr.location || null);
     setShowAddModal(true);
   };
 
@@ -114,13 +183,7 @@ const MyAddressesScreen = ({ navigation }) => {
     setTitle('');
     setAddress('');
     setUseCurrentLocation(false);
-  };
-
-  const handleUseCurrentLocation = () => {
-    setUseCurrentLocation(true);
-    // Dummy location for UI demonstration
-    const dummyLocation = 'House 23, Street 10, F-7/3, Islamabad, Pakistan\n(Latitude: 33.7295, Longitude: 73.0372)';
-    setAddress(dummyLocation);
+    setCurrentLocation(null);
   };
 
   const renderAddressCard = (addr) => (
@@ -165,6 +228,12 @@ const MyAddressesScreen = ({ navigation }) => {
       <Header navigation={navigation} title="My Addresses" showBackButton={true} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          </View>
+        )}
+
         {/* Add New Address Button */}
         <TouchableOpacity
           style={styles.addNewButton}
@@ -263,21 +332,25 @@ const MyAddressesScreen = ({ navigation }) => {
                     useCurrentLocation && styles.locationButtonActive,
                   ]}
                   onPress={handleUseCurrentLocation}
+                  disabled={locationLoading}
                 >
-                  <Ionicons
-                    name="locate"
-                    size={20}
-                    color={useCurrentLocation ? COLORS.white : COLORS.primary}
-                  />
+                  {locationLoading ? (
+                    <ActivityIndicator color={useCurrentLocation ? COLORS.white : COLORS.primary} />
+                  ) : (
+                    <Ionicons
+                      name="locate"
+                      size={20}
+                      color={useCurrentLocation ? COLORS.white : COLORS.primary}
+                    />
+                  )}
                   <Text
                     style={[
                       styles.locationButtonText,
                       useCurrentLocation && styles.locationButtonTextActive,
                     ]}
                   >
-                    Use Current Location
+                    {locationLoading ? 'Getting location...' : 'Use Current Location'}
                   </Text>
-
                 </TouchableOpacity>
                    <Text style={styles.orText}>OR</Text>
                
@@ -287,8 +360,9 @@ const MyAddressesScreen = ({ navigation }) => {
                     value={address}
                     onChangeText={(text) => {
                       setAddress(text);
-                      if (text !== 'Current Location (Auto-detected)') {
+                      if (useCurrentLocation) {
                         setUseCurrentLocation(false);
+                        setCurrentLocation(null);
                       }
                     }}
                     placeholderTextColor={COLORS.textSecondary}
@@ -314,10 +388,15 @@ const MyAddressesScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[styles.simpleButton, styles.saveButton]}
                   onPress={editingAddress ? handleUpdateAddress : handleAddAddress}
+                  disabled={saving}
                 >
-                  <Text style={styles.saveButtonText}>
-                    {editingAddress ? 'Update' : 'Save'}
-                  </Text>
+                  {saving ? (
+                    <ActivityIndicator color={COLORS.white} />
+                  ) : (
+                    <Text style={styles.saveButtonText}>
+                      {editingAddress ? 'Update' : 'Save'}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
@@ -336,6 +415,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: SPACING.lg,
     paddingBottom: SPACING.xl,
+  },
+  loadingContainer: {
+    marginBottom: SPACING.md,
+    alignItems: 'center',
   },
   addNewButton: {
     backgroundColor: COLORS.white,

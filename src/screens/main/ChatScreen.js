@@ -1,133 +1,205 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  SafeAreaView,
   TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Image,
+  ActivityIndicator,
+  Alert,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { chatAPI, openRiderChat } from '../../services/api';
+import { getData } from '../../storage/asyncStorage';
+import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
+
+function formatMsgTime(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
 
 const ChatScreen = ({ navigation, route }) => {
-  const { contactId, contactName, avatar, online } = route.params || {};
+  const insets = useSafeAreaInsets();
+  const {
+    conversationId: initialConversationId,
+    participantId,
+    contactName,
+    orderCode,
+  } = route.params || {};
+
+  const [conversationId, setConversationId] = useState(initialConversationId || null);
   const [message, setMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [myUserId, setMyUserId] = useState(null);
   const flatListRef = useRef(null);
 
-  const [messages, setMessages] = useState([
-    {
-      id: '1',
-      text: 'Hi! How can I help you today?',
-      sender: 'them',
-      time: '10:00 AM',
-      status: 'read',
+  useEffect(() => {
+    (async () => {
+      const user = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
+      if (user?._id) setMyUserId(String(user._id));
+      else if (user?.id) setMyUserId(String(user.id));
+    })();
+  }, []);
+
+  const loadMessages = useCallback(
+    async (convId, silent = false) => {
+      if (!convId) return;
+      if (!silent) setLoading(true);
+      try {
+        const res = await chatAPI.getMessages(convId, { limit: 100 });
+        const userData = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
+        const uid =
+          myUserId || String(userData?._id || userData?.id || '');
+        if (res.success && Array.isArray(res.data)) {
+          setMessages(
+            res.data.map((m) => ({
+              id: String(m.id),
+              text: m.text,
+              sender: uid && String(m.senderId) === String(uid) ? 'me' : 'them',
+              time: m.time || formatMsgTime(m.timestamp),
+              status: m.read ? 'read' : 'delivered',
+            }))
+          );
+        }
+        await chatAPI.markRead(convId);
+      } catch (e) {
+        console.log('load messages', e);
+      } finally {
+        if (!silent) setLoading(false);
+      }
     },
-    {
-      id: '2',
-      text: 'I have a question about my order.',
-      sender: 'me',
-      time: '10:02 AM',
-      status: 'read',
-    },
-    {
-      id: '3',
-      text: 'Sure, what would you like to know?',
-      sender: 'them',
-      time: '10:03 AM',
-      status: 'read',
-    },
-    {
-      id: '4',
-      text: 'When will my robot delivery arrive?',
-      sender: 'me',
-      time: '10:05 AM',
-      status: 'delivered',
-    },
-    {
-      id: '5',
-      text: 'Your robot is on the way! It should arrive in about 10 minutes.',
-      sender: 'them',
-      time: '10:06 AM',
-      status: 'read',
-    },
-  ]);
+    [myUserId]
+  );
 
   useEffect(() => {
-    if (flatListRef.current) {
-      flatListRef.current.scrollToEnd({ animated: true });
+    let cancelled = false;
+
+    const init = async () => {
+      setLoading(true);
+      try {
+        let convId = initialConversationId || conversationId;
+        if (!convId && participantId) {
+          convId = await openRiderChat({
+            riderId: participantId,
+            orderCode,
+          });
+        }
+        if (cancelled || !convId) {
+          if (!participantId) {
+            Alert.alert('Chat', 'Missing conversation. Go back and try again.');
+            navigation.goBack();
+          }
+          return;
+        }
+        setConversationId(convId);
+        await loadMessages(convId, true);
+      } catch (e) {
+        Alert.alert('Chat', e.message || 'Could not open chat');
+        navigation.goBack();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    init();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialConversationId, participantId, orderCode]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const interval = setInterval(() => loadMessages(conversationId, true), 4000);
+    return () => clearInterval(interval);
+  }, [conversationId, loadMessages]);
+
+  useEffect(() => {
+    if (flatListRef.current && messages.length > 0) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages]);
 
-  const handleSend = () => {
-    if (message.trim() === '') return;
+  const handleSend = async () => {
+    if (!message.trim() || !conversationId || sending) return;
+    const text = message.trim();
+    setSending(true);
+    setMessage('');
 
-    const newMessage = {
-      id: Date.now().toString(),
-      text: message.trim(),
+    const optimistic = {
+      id: `tmp-${Date.now()}`,
+      text,
       sender: 'me',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: formatMsgTime(new Date().toISOString()),
       status: 'sent',
     };
+    setMessages((prev) => [...prev, optimistic]);
 
-    setMessages([...messages, newMessage]);
-    setMessage('');
-    setIsTyping(false);
-
-    // Simulate reply after 2 seconds
-    setTimeout(() => {
-      const replyMessage = {
-        id: (Date.now() + 1).toString(),
-        text: 'Thanks for your message! Our team will get back to you shortly.',
-        sender: 'them',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: 'read',
-      };
-      setMessages(prev => [...prev, replyMessage]);
-    }, 2000);
+    try {
+      const res = await chatAPI.sendMessage(conversationId, text);
+      if (res.success && res.data) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimistic.id
+              ? {
+                  id: String(res.data.id),
+                  text: res.data.text,
+                  sender: 'me',
+                  time: res.data.time || formatMsgTime(res.data.timestamp),
+                  status: 'delivered',
+                }
+              : m
+          )
+        );
+      }
+      await loadMessages(conversationId, true);
+    } catch (e) {
+      Alert.alert('Send failed', e.message || 'Could not send message');
+      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+      setMessage(text);
+    } finally {
+      setSending(false);
+    }
   };
 
-  const handleTyping = (text) => {
-    setMessage(text);
-    setIsTyping(text.length > 0);
-  };
-
-  const getInitials = (name) => {
-    return name?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-  };
-
-  const getRandomColor = (id) => {
-    const colors = ['#2EC4B6', '#FF8C42', '#6C5CE7', '#00B894', '#E17055', '#74B9FF'];
-    return colors[parseInt(id) % colors.length] || COLORS.primary;
-  };
+  const getInitials = (name) =>
+    (name || '?')
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
 
   const renderMessage = ({ item }) => {
     const isMe = item.sender === 'me';
-
     return (
       <View style={[styles.messageRow, isMe ? styles.myMessageRow : styles.theirMessageRow]}>
         {!isMe && (
-          <View style={[styles.smallAvatar, { backgroundColor: getRandomColor(contactId) }]}>
+          <View style={styles.smallAvatar}>
             <Text style={styles.smallAvatarText}>{getInitials(contactName)}</Text>
           </View>
         )}
         <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble]}>
-          <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText]}>
-            {item.text}
-          </Text>
+          <Text style={styles.messageText}>{item.text}</Text>
           <View style={styles.messageFooter}>
             <Text style={styles.messageTime}>{item.time}</Text>
             {isMe && (
               <Ionicons
                 name={item.status === 'read' ? 'checkmark-done' : 'checkmark'}
-                size={16}
-                color={item.status === 'read' ? '#34B7F1' : '#999'}
+                size={14}
+                color={item.status === 'read' ? '#34B7F1' : '#94A3B8'}
                 style={styles.messageStatus}
               />
             )}
@@ -137,113 +209,148 @@ const ChatScreen = ({ navigation, route }) => {
     );
   };
 
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Chat Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+    <View style={styles.root}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+
+      {/* Header — below status bar */}
+      <View style={[styles.header, { paddingTop: insets.top + SPACING.xs }]}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-
         <View style={styles.headerInfo}>
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.headerAvatar} />
-          ) : (
-            <View style={[styles.headerAvatar, { backgroundColor: getRandomColor(contactId) }]}>
-              <Text style={styles.headerAvatarText}>{getInitials(contactName)}</Text>
-            </View>
-          )}
+          <View style={styles.headerAvatar}>
+            <Text style={styles.headerAvatarText}>{getInitials(contactName)}</Text>
+          </View>
           <View style={styles.headerTextContainer}>
-            <Text style={styles.headerName}>{contactName}</Text>
-            <Text style={styles.headerStatus}>
-              {online ? 'Online' : 'Offline'}
+            <Text style={styles.headerName} numberOfLines={1}>
+              {contactName || 'Rider'}
+            </Text>
+            <Text style={styles.headerStatus} numberOfLines={1}>
+              {orderCode ? `Order #${orderCode}` : 'Delivery chat'}
             </Text>
           </View>
         </View>
-
-        <TouchableOpacity style={styles.headerButton}>
-          <Ionicons name="call-outline" size={22} color={COLORS.textPrimary} />
-        </TouchableOpacity>
       </View>
 
-      {/* Messages List */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.messagesContainer}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-      />
-
-      {/* Input Area with Keyboard Handling */}
+      {/* Messages + input */}
       <KeyboardAvoidingView
+        style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.attachButton}>
-            <Ionicons name="add-circle-outline" size={28} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+        <View style={styles.chatBody}>
+          {loading ? (
+            <View style={styles.center}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessage}
+              keyExtractor={(item) => item.id}
+              style={styles.flex}
+              contentContainerStyle={[
+                styles.messagesContainer,
+                messages.length === 0 && styles.messagesContainerEmpty,
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() =>
+                flatListRef.current?.scrollToEnd({ animated: false })
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyChat}>
+                  <Ionicons name="chatbubbles-outline" size={48} color={COLORS.textSecondary} />
+                  <Text style={styles.emptyChatText}>Say hello to your rider</Text>
+                </View>
+              }
+            />
+          )}
+        </View>
 
+        {/* Input — above home indicator, not under tab bar */}
+        <View style={[styles.inputBar, { paddingBottom: bottomInset }]}>
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.textInput}
               placeholder="Type a message..."
               value={message}
-              onChangeText={handleTyping}
+              onChangeText={setMessage}
               multiline
               maxLength={500}
               placeholderTextColor={COLORS.textSecondary}
+              editable={!!conversationId && !loading}
             />
-            <TouchableOpacity style={styles.emojiButton}>
-              <Ionicons name="happy-outline" size={24} color={COLORS.textSecondary} />
-            </TouchableOpacity>
           </View>
-
-          {isTyping ? (
-            <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-              <Ionicons name="send" size={22} color={COLORS.white} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.micButton}>
-              <Ionicons name="mic" size={24} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!message.trim() || sending || !conversationId) && styles.sendButtonDisabled,
+            ]}
+            onPress={handleSend}
+            disabled={!message.trim() || sending || !conversationId}
+          >
+            {sending ? (
+              <ActivityIndicator color={COLORS.white} size="small" />
+            ) : (
+              <Ionicons name="send" size={20} color={COLORS.white} />
+            )}
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#E5DDD5', // WhatsApp chat background color
+    backgroundColor: '#ECEFF1',
+  },
+  flex: {
+    flex: 1,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.background,
-    borderBottomWidth: 1,
+    paddingBottom: SPACING.sm + 4,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
   },
   backButton: {
     padding: SPACING.xs,
+    marginRight: SPACING.xs,
   },
   headerInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: SPACING.sm,
   },
   headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -253,28 +360,45 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   headerTextContainer: {
-    marginLeft: SPACING.sm,
+    marginLeft: SPACING.md,
+    flex: 1,
   },
   headerName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
   headerStatus: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
-  headerButton: {
-    padding: SPACING.sm,
+  chatBody: {
+    flex: 1,
+    backgroundColor: '#ECEFF1',
   },
   messagesContainer: {
-    padding: SPACING.md,
-    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.md,
+    flexGrow: 1,
+  },
+  messagesContainerEmpty: {
+    justifyContent: 'center',
+    flexGrow: 1,
+  },
+  emptyChat: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+  },
+  emptyChatText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    marginTop: SPACING.md,
   },
   messageRow: {
     flexDirection: 'row',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm + 4,
     alignItems: 'flex-end',
   },
   myMessageRow: {
@@ -284,40 +408,41 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   smallAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.xs,
   },
   smallAvatarText: {
     color: COLORS.white,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
   },
   messageBubble: {
-    maxWidth: '75%',
+    maxWidth: '78%',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 4,
+    paddingVertical: SPACING.sm + 2,
     borderRadius: BORDER_RADIUS.lg,
   },
   myBubble: {
-    backgroundColor: '#DCF8C6', // WhatsApp green
+    backgroundColor: '#DCF8C6',
     borderBottomRightRadius: 4,
   },
   theirBubble: {
     backgroundColor: COLORS.white,
     borderBottomLeftRadius: 4,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
   messageText: {
     fontSize: 15,
-    lineHeight: 20,
-  },
-  myMessageText: {
-    color: COLORS.textPrimary,
-  },
-  theirMessageText: {
+    lineHeight: 21,
     color: COLORS.textPrimary,
   },
   messageFooter: {
@@ -328,42 +453,37 @@ const styles = StyleSheet.create({
   },
   messageTime: {
     fontSize: 11,
-    color: '#999',
+    color: '#94A3B8',
   },
   messageStatus: {
     marginLeft: 4,
   },
-  inputContainer: {
+  inputBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.background,
-    borderTopWidth: 1,
+    alignItems: 'flex-end',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm + 2,
+    backgroundColor: COLORS.white,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.border,
-  },
-  attachButton: {
-    padding: SPACING.xs,
   },
   inputWrapper: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
+    backgroundColor: '#F4F7FA',
     borderRadius: BORDER_RADIUS.xl,
-    marginHorizontal: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     paddingHorizontal: SPACING.md,
-    maxHeight: 100,
+    marginRight: SPACING.sm,
+    maxHeight: 120,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   textInput: {
-    flex: 1,
     fontSize: 16,
     color: COLORS.textPrimary,
-    paddingVertical: SPACING.sm + 4,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     maxHeight: 100,
-  },
-  emojiButton: {
-    padding: SPACING.xs,
   },
   sendButton: {
     width: 44,
@@ -372,14 +492,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 2,
   },
-  micButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+  sendButtonDisabled: {
+    opacity: 0.45,
   },
 });
 

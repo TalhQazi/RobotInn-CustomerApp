@@ -16,19 +16,30 @@ import HelpCenterScreen from '../screens/main/HelpCenterScreen';
 import OrderDetailsScreen from '../screens/main/OrderDetailsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import { COLORS } from '../theme/colors';
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet, Platform } from 'react-native';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
+import { NotificationUnreadProvider } from '../context/NotificationUnreadContext';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+
+const getTabBarStyle = (route) => {
+  const routeName = getFocusedRouteNameFromRoute(route) ?? '';
+  if (routeName === 'Chat') {
+    return { display: 'none' };
+  }
+  return styles.tabBar;
+};
 
 // Home Stack (Dashboard + related screens)
 const HomeStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="DashboardHome" component={DashboardScreen} />
     <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+    <Stack.Screen name="Chat" component={ChatScreen} />
     <Stack.Screen name="Notifications" component={NotificationScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
     <Stack.Screen name="MyAddresses" component={MyAddressesScreen} />
@@ -50,6 +61,7 @@ const CartStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="CartHome" component={CartScreen} />
     <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+    <Stack.Screen name="Chat" component={ChatScreen} />
   </Stack.Navigator>
 );
 
@@ -67,6 +79,7 @@ const ProfileStack = () => (
     <Stack.Screen name="ProfileHome" component={ProfileScreen} />
     <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
     <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+    <Stack.Screen name="Chat" component={ChatScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
     <Stack.Screen name="Notifications" component={NotificationScreen} />
     <Stack.Screen name="MyAddresses" component={MyAddressesScreen} />
@@ -118,6 +131,7 @@ const MainTabs = () => {
   }, []);
 
   return (
+    <NotificationUnreadProvider>
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
@@ -129,39 +143,45 @@ const MainTabs = () => {
       <Tab.Screen 
         name="Dashboard" 
         component={HomeStack} 
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "home" : "home-outline"} label="Home" focused={focused} />
-        }}
+        options={({ route }) => ({
+          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "home" : "home-outline"} label="Home" focused={focused} />,
+          tabBarStyle: getTabBarStyle(route),
+        })}
       />
       <Tab.Screen 
         name="Requests" 
         component={OrdersStack} 
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "list" : "list-outline"} label="Orders" focused={focused} />
-        }}
+        options={({ route }) => ({
+          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "list" : "list-outline"} label="Orders" focused={focused} />,
+          tabBarStyle: getTabBarStyle(route),
+        })}
       />
       <Tab.Screen 
         name="Cart" 
         component={CartStack} 
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "cart" : "cart-outline"} label="Cart" focused={focused} badgeCount={cartCount} />
-        }}
+        options={({ route }) => ({
+          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "cart" : "cart-outline"} label="Cart" focused={focused} badgeCount={cartCount} />,
+          tabBarStyle: getTabBarStyle(route),
+        })}
       />
       <Tab.Screen 
         name="Messages" 
         component={MessagesStack} 
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "chatbubble" : "chatbubble-outline"} label="Messages" focused={focused} />
-        }}
+        options={({ route }) => ({
+          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "chatbubble" : "chatbubble-outline"} label="Messages" focused={focused} />,
+          tabBarStyle: getTabBarStyle(route),
+        })}
       />
       <Tab.Screen 
         name="Profile" 
         component={ProfileStack} 
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "person" : "person-outline"} label="Profile" focused={focused} />
-        }}
+        options={({ route }) => ({
+          tabBarIcon: ({ focused }) => <TabIcon icon={focused ? "person" : "person-outline"} label="Profile" focused={focused} />,
+          tabBarStyle: getTabBarStyle(route),
+        })}
       />
     </Tab.Navigator>
+    </NotificationUnreadProvider>
   );
 };
 

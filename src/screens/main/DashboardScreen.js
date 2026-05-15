@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Modal, FlatList, Keyboard, Dimensions, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Modal, FlatList, Keyboard, Dimensions, Animated, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
 import { COLORS, GRADIENTS } from '../../theme/colors';
-import { ordersAPI, areasAPI } from '../../services/api';
+import { ordersAPI, areasAPI, usersAPI } from '../../services/api';
+import { getCurrentLocationWithAddress } from '../../utils/location';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
@@ -97,10 +98,12 @@ const DashboardScreen = ({ navigation }) => {
 
   // Address
   const [address, setAddress] = useState('');
+  const [addressCoords, setAddressCoords] = useState(null);
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedSavedAddress, setSelectedSavedAddress] = useState(null);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showManualAddressInput, setShowManualAddressInput] = useState(false);
+  const [addressLocationLoading, setAddressLocationLoading] = useState(false);
 
   // Orders
   const [recentOrders, setRecentOrders] = useState([]);
@@ -213,8 +216,23 @@ const DashboardScreen = ({ navigation }) => {
         setCurrentOrders(activeOrders);
       }
       
-      const addresses = await getData(ASYNC_STORAGE_KEYS.ADDRESSES) || [];
-      setSavedAddresses(addresses);
+      try {
+        const addrRes = await usersAPI.getAddresses();
+        if (addrRes?.data?.length) {
+          const formatted = addrRes.data.map((addr) => ({
+            ...addr,
+            id: addr.addressId || addr._id || addr.id,
+          }));
+          setSavedAddresses(formatted);
+          await storeData(ASYNC_STORAGE_KEYS.ADDRESSES, formatted);
+        } else {
+          const addresses = await getData(ASYNC_STORAGE_KEYS.ADDRESSES) || [];
+          setSavedAddresses(addresses);
+        }
+      } catch {
+        const addresses = await getData(ASYNC_STORAGE_KEYS.ADDRESSES) || [];
+        setSavedAddresses(addresses);
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     }
@@ -290,6 +308,21 @@ const DashboardScreen = ({ navigation }) => {
     setShowStoreDropdown(false);
   };
 
+  const handleSelectCurrentLocation = async () => {
+    setAddressLocationLoading(true);
+    try {
+      const { lat, lng, address: formattedAddress } = await getCurrentLocationWithAddress();
+      setAddress(formattedAddress);
+      setAddressCoords({ lat, lng });
+      setSelectedSavedAddress({ id: 'current', isCurrentLocation: true });
+      setShowAddressModal(false);
+    } catch (error) {
+      console.error('Dashboard location error:', error);
+    } finally {
+      setAddressLocationLoading(false);
+    }
+  };
+
   const handleRobotStoreToggle = () => {
     setIsRobotStore(!isRobotStore);
     if (!isRobotStore) {
@@ -315,6 +348,8 @@ const DashboardScreen = ({ navigation }) => {
       store: isRobotStore ? 'Robot Store' : (selectedStore === 'Other' ? (customStore || '') : (selectedStore || '')),
       isRobotStore: !!isRobotStore,
       address: address.trim() || '',
+      location: addressCoords || selectedSavedAddress?.location || null,
+      isCurrentLocation: !!selectedSavedAddress?.isCurrentLocation,
       status: 'Pending',
       createdAt: new Date().toISOString(),
       riderId: null,
@@ -333,6 +368,8 @@ const DashboardScreen = ({ navigation }) => {
       setCustomStore('');
       setIsRobotStore(false);
       setAddress('');
+      setAddressCoords(null);
+      setSelectedSavedAddress(null);
       setThemedAlert({
         visible: true,
         title: 'Success',
@@ -717,11 +754,19 @@ const DashboardScreen = ({ navigation }) => {
                 <Text style={styles.inputLabel}>Delivery Address</Text>
               </View>
 
-              <TouchableOpacity style={styles.addressSelectorButton} onPress={() => setShowAddressModal(true)}>
+              <TouchableOpacity
+                style={styles.addressSelectorButton}
+                onPress={() => setShowAddressModal(true)}
+                disabled={addressLocationLoading}
+              >
                 <View style={styles.addressSelectorContent}>
-                  <Ionicons name={selectedSavedAddress ? 'checkmark-circle' : 'location-outline'} size={22} color={selectedSavedAddress ? '#2EC4B6' : '#999'} />
-                  <Text style={[styles.addressSelectorText, selectedSavedAddress && styles.addressSelectorTextSelected]} numberOfLines={2}>
-                    {address || 'Select or enter your address...'}
+                  {addressLocationLoading ? (
+                    <ActivityIndicator size="small" color="#2EC4B6" />
+                  ) : (
+                    <Ionicons name={address ? 'checkmark-circle' : 'location-outline'} size={22} color={address ? '#2EC4B6' : '#999'} />
+                  )}
+                  <Text style={[styles.addressSelectorText, address && styles.addressSelectorTextSelected]} numberOfLines={2}>
+                    {addressLocationLoading ? 'Getting your location...' : (address || 'Select or enter your address...')}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#999" />
@@ -739,7 +784,11 @@ const DashboardScreen = ({ navigation }) => {
                   style={styles.addressInput}
                   placeholder="Enter your complete address..."
                   value={address}
-                  onChangeText={(text) => { setAddress(text); setSelectedSavedAddress(null); }}
+                  onChangeText={(text) => {
+                    setAddress(text);
+                    setSelectedSavedAddress(null);
+                    setAddressCoords(null);
+                  }}
                   placeholderTextColor="#999"
                   multiline
                   numberOfLines={3}
@@ -915,14 +964,21 @@ const DashboardScreen = ({ navigation }) => {
             <ScrollView style={styles.addressModalScroll} showsVerticalScrollIndicator={false}>
               <TouchableOpacity
                 style={styles.addressModalOption}
-                onPress={() => { setAddress('Current Location (Auto-detected)'); setSelectedSavedAddress({ id: 'current', isCurrentLocation: true }); setShowAddressModal(false); }}
+                onPress={handleSelectCurrentLocation}
+                disabled={addressLocationLoading}
               >
                 <View style={styles.addressModalOptionIcon}>
-                  <Ionicons name="locate" size={24} color="#2EC4B6" />
+                  {addressLocationLoading ? (
+                    <ActivityIndicator size="small" color="#2EC4B6" />
+                  ) : (
+                    <Ionicons name="locate" size={24} color="#2EC4B6" />
+                  )}
                 </View>
                 <View style={styles.addressModalOptionContent}>
                   <Text style={styles.addressModalOptionTitle}>Use Current Location</Text>
-                  <Text style={styles.addressModalOptionSubtitle}>Auto-detect your location</Text>
+                  <Text style={styles.addressModalOptionSubtitle}>
+                    {addressLocationLoading ? 'Detecting GPS & address...' : 'Auto-detect your location'}
+                  </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#999" />
               </TouchableOpacity>
@@ -934,7 +990,14 @@ const DashboardScreen = ({ navigation }) => {
                     <TouchableOpacity
                       key={addr.id}
                       style={[styles.addressModalOption, selectedSavedAddress?.id === addr.id && styles.addressModalOptionSelected]}
-                      onPress={() => { setAddress(addr.address); setSelectedSavedAddress(addr); setShowAddressModal(false); }}
+                      onPress={() => {
+                        setAddress(addr.address);
+                        setSelectedSavedAddress(addr);
+                        const lat = addr.location?.lat;
+                        const lng = addr.location?.lng;
+                        setAddressCoords(lat != null && lng != null ? { lat, lng } : null);
+                        setShowAddressModal(false);
+                      }}
                     >
                       <View style={styles.addressModalOptionIcon}>
                         <Ionicons name={addr.isCurrentLocation ? 'location' : 'location-outline'} size={22} color="#2EC4B6" />

@@ -20,6 +20,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
 import { authAPI } from '../../services/api';
+import { resetToMain } from '../../navigation/navigationRef';
 
 const { width, height } = Dimensions.get('window');
 
@@ -104,7 +105,7 @@ const LoginScreen = ({ navigation }) => {
         type: 'success',
         onConfirm: () => {
           setAlertVisible(false);
-          navigation.replace('Main');
+          resetToMain();
         },
       });
       setAlertVisible(true);
@@ -213,9 +214,12 @@ const LoginScreen = ({ navigation }) => {
                   label="Email Address"
                   placeholder="customer@robotinn.com"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(text) => setEmail(text.trim().toLowerCase())}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
                   icon={<Icon name="mail-outline" size={20} color={COLORS.primary} />}
                 />
 
