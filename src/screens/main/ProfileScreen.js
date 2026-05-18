@@ -1,27 +1,32 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Image, Modal } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Image, Modal, ActivityIndicator } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
-import CustomButton from '../../components/common/CustomButton';
-import { getData, storeData } from '../../storage/asyncStorage';
-import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
-import { authAPI } from '../../services/api';
+import { authAPI, uploadAPI, usersAPI } from '../../services/api';
 import { resetToAuth } from '../../navigation/navigationRef';
 import { useNotificationUnread } from '../../context/NotificationUnreadContext';
+import { useUserProfile, getAvatarUri, getUserInitial } from '../../context/UserProfileContext';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const ProfileScreen = ({ navigation }) => {
   const { unreadCount, refreshUnreadCount } = useNotificationUnread();
-  const [user, setUser] = useState({ name: 'Fawad', email: 'fawad@example.com', profilePic: null });
+  const { user, refreshProfile, updateLocalUser } = useUserProfile();
   const [aboutModalVisible, setAboutModalVisible] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const avatarUri = getAvatarUri(user);
+  const displayName = user?.name || 'User';
+  const displayEmail = user?.email || '';
 
   useFocusEffect(
     React.useCallback(() => {
       refreshUnreadCount();
-    }, [refreshUnreadCount])
+      refreshProfile();
+    }, [refreshUnreadCount, refreshProfile])
   );
 
   const menuItems = useMemo(
@@ -35,37 +40,6 @@ const ProfileScreen = ({ navigation }) => {
     ],
     [unreadCount]
   );
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        // First try to get from async storage
-        let userData = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
-        
-        // If not in storage, fetch from API
-        if (!userData) {
-          const response = await authAPI.getMe();
-          userData = response.data || response.user;
-          if (userData) {
-            await storeData(ASYNC_STORAGE_KEYS.USER_DATA, userData);
-          }
-        }
-        
-        if (userData) {
-          setUser({
-            name: userData.name || 'User',
-            email: userData.email || '',
-            profilePic: userData.avatar || null,
-            phone: userData.phone || '',
-            area: userData.area || '',
-          });
-        }
-      } catch (error) {
-        console.error('Error fetching user:', error);
-      }
-    };
-    fetchUser();
-  }, []);
 
   const handleLogout = () => {
     Alert.alert(
@@ -84,20 +58,58 @@ const ProfileScreen = ({ navigation }) => {
     );
   };
 
-  const handleProfilePicUpdate = () => {
-    Alert.alert('Update Profile', 'Simulate profile picture update?', [
-      {
-        text: 'Upload Sample',
-        onPress: async () => {
-          const samplePic = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=500&q=80';
-          const updatedUser = { ...user, profilePic: samplePic };
-          setUser(updatedUser);
-          await storeData(ASYNC_STORAGE_KEYS.USER_DATA, updatedUser);
-          Alert.alert('Success', 'Profile picture updated!');
-        }
-      },
-      { text: 'Cancel', style: 'cancel' }
-    ]);
+  const handleProfilePicUpdate = async () => {
+    if (uploadingAvatar) {
+      return;
+    }
+
+    try {
+      const response = await launchImageLibrary({
+        mediaType: 'photo',
+        selectionLimit: 1,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        quality: 0.85,
+      });
+
+      if (response.didCancel) {
+        return;
+      }
+
+      if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage || 'Could not open photo library');
+        return;
+      }
+
+      const asset = response.assets?.[0];
+      if (!asset?.uri) {
+        Alert.alert('Error', 'Could not read the selected image');
+        return;
+      }
+
+      setUploadingAvatar(true);
+
+      const uploadRes = await uploadAPI.uploadImage({
+        uri: asset.uri,
+        name: asset.fileName || asset.uri.split('/').pop(),
+        type: asset.type || 'image/jpeg',
+      });
+
+      const avatarUrl = uploadRes?.url || uploadRes?.data?.url;
+      if (!avatarUrl) {
+        throw new Error('Upload did not return an image URL');
+      }
+
+      const profileRes = await usersAPI.updateProfile({ avatar: avatarUrl });
+      const updatedUser = profileRes?.data || { avatar: avatarUrl };
+      await updateLocalUser(updatedUser);
+      Alert.alert('Success', 'Profile picture updated');
+    } catch (error) {
+      console.error('Profile picture upload error:', error);
+      Alert.alert('Error', error?.message || 'Could not update profile picture');
+    } finally {
+      setUploadingAvatar(false);
+    }
   };
 
   const MenuItem = ({ icon, title, onPress, color, isFirst, isLast, badge = 0 }) => (
@@ -164,20 +176,22 @@ const ProfileScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <TouchableOpacity onPress={handleProfilePicUpdate} style={styles.avatarContainer}>
+          <TouchableOpacity onPress={handleProfilePicUpdate} style={styles.avatarContainer} disabled={uploadingAvatar}>
             <View style={styles.avatar}>
-              {user.profilePic ? (
-                <Image source={{ uri: user.profilePic }} style={styles.profileImage} />
+              {uploadingAvatar ? (
+                <ActivityIndicator size="large" color={COLORS.white} />
+              ) : avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.profileImage} />
               ) : (
-                <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
+                <Text style={styles.avatarText}>{getUserInitial(user)}</Text>
               )}
               <View style={styles.editIconContainer}>
                 <Ionicons name="camera" size={16} color={COLORS.white} />
               </View>
             </View>
           </TouchableOpacity>
-          <Text style={styles.userName}>{user.name}</Text>
-          <Text style={styles.userEmail}>{user.email}</Text>
+          <Text style={styles.userName}>{displayName}</Text>
+          <Text style={styles.userEmail}>{displayEmail}</Text>
         </View>
 
         {/* Quick Cards Row */}

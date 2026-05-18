@@ -3,7 +3,8 @@ import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 
 // Use 10.0.2.2 for Android emulator, localhost for iOS simulator
 // For physical device, use your computer's actual IP address (e.g., 192.168.1.x)
-const BASE_URL = 'http://192.168.1.8:5050/api/v1';
+// const BASE_URL = 'http://192.168.1.8:5050/api/v1';
+const BASE_URL = 'https://robot-inn-backend.vercel.app/api/v1';
 
 const getAuthHeaders = async () => {
   const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
@@ -14,11 +15,40 @@ const getAuthHeaders = async () => {
 };
 
 const handleResponse = async (response) => {
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Something went wrong');
+  const text = await response.text();
+  let data = null;
+
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (!response.ok) {
+        throw new Error(text || 'Request failed');
+      }
+      throw new Error('Invalid server response');
+    }
   }
+
+  if (!response.ok) {
+    const validationMessage = Array.isArray(data?.errors)
+      ? data.errors.map((err) => err.message).join(', ')
+      : null;
+    throw new Error(data?.message || validationMessage || 'Something went wrong');
+  }
+
   return data;
+};
+
+const buildUploadFileName = (name, type) => {
+  if (name) {
+    return name;
+  }
+  const extension = type?.includes('png')
+    ? 'png'
+    : type?.includes('webp')
+      ? 'webp'
+      : 'jpg';
+  return `profile-${Date.now()}.${extension}`;
 };
 
 // Auth APIs
@@ -36,7 +66,7 @@ export const authAPI = {
     const response = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, app: 'customer' }),
     });
     const data = await handleResponse(response);
     if (data.token) {
@@ -150,6 +180,13 @@ export const notificationsAPI = {
 
 // Users APIs
 export const usersAPI = {
+  getProfile: async () => {
+    const response = await fetch(`${BASE_URL}/users/profile`, {
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
   updateProfile: async (userData) => {
     const response = await fetch(`${BASE_URL}/users/profile`, {
       method: 'PUT',
@@ -189,6 +226,34 @@ export const usersAPI = {
       method: 'DELETE',
       headers: await getAuthHeaders(),
     });
+    return handleResponse(response);
+  },
+};
+
+// Upload APIs
+export const uploadAPI = {
+  uploadImage: async ({ uri, name, type }) => {
+    if (!uri) {
+      throw new Error('No image selected');
+    }
+
+    const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
+    const formData = new FormData();
+    formData.append('folder', 'profiles');
+    formData.append('file', {
+      uri,
+      name: buildUploadFileName(name, type),
+      type: type || 'image/jpeg',
+    });
+
+    const response = await fetch(`${BASE_URL}/upload/image`, {
+      method: 'POST',
+      headers: {
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+      body: formData,
+    });
+
     return handleResponse(response);
   },
 };

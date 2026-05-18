@@ -97,7 +97,23 @@ const LoginScreen = ({ navigation }) => {
     try {
       const response = await authAPI.login(email, password);
       setLoading(false);
-      
+
+      const userType = String(response.user?.type || '').toLowerCase();
+      if (userType !== 'customer') {
+        await authAPI.logout();
+        setAlertConfig({
+          title: 'Wrong app',
+          message:
+            userType === 'rider'
+              ? 'This account is for delivery partners. Please sign in using the RobotInn Rider app.'
+              : 'This account cannot be used in the customer app.',
+          type: 'error',
+          onConfirm: () => setAlertVisible(false),
+        });
+        setAlertVisible(true);
+        return;
+      }
+
       // Show styled success alert
       setAlertConfig({
         title: 'Welcome Back!',

@@ -1,49 +1,101 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  Image,
   TouchableOpacity,
-  Dimensions,
-  Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
+import LiveTrackingMap from '../../components/order/LiveTrackingMap';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
-import { ORDER_STATUS } from '../../utils/constants';
+import { ordersAPI } from '../../services/api';
+import {
+  geocodeAddress,
+  getDrivingDistance,
+  formatEtaWindow,
+  haversineKm,
+  normalizeRiderLocation,
+} from '../../utils/maps';
+import {
+  connectSocket,
+  joinOrderRoom,
+  leaveOrderRoom,
+  onRiderLocationUpdated,
+  onOrderUpdated,
+} from '../../services/socket';
 
-const { width, height } = Dimensions.get('window');
-
-const formatTime = (date) =>
-  date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-const getEstimatedWindow = (createdAt) => {
-  const base = createdAt ? new Date(createdAt) : new Date();
-  const start = new Date(base.getTime() + 25 * 60 * 1000);
-  const end = new Date(base.getTime() + 35 * 60 * 1000);
-  return `${formatTime(start)} - ${formatTime(end)}`;
-};
-
-const ETA_TOTAL_MINUTES = 30;
+const TRACKING_STATUSES = ['accepted', 'processing', 'picked'];
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-const getMinutesRemaining = (createdAt, now = Date.now()) => {
-  const baseMs = createdAt ? new Date(createdAt).getTime() : now;
-  const elapsedMins = Math.floor((now - baseMs) / (60 * 1000));
-  return clamp(ETA_TOTAL_MINUTES - elapsedMins, 0, ETA_TOTAL_MINUTES);
+const STATUS_DISPLAY = {
+  pending: 'Pending',
+  accepted: 'Accepted',
+  processing: 'In Progress',
+  picked: 'Picked Up',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
 };
 
-const getEtaProgress = (createdAt, now = Date.now()) => {
-  const remaining = getMinutesRemaining(createdAt, now);
-  return clamp((ETA_TOTAL_MINUTES - remaining) / ETA_TOTAL_MINUTES, 0, 1);
-};
+function normalizeOrderStatus(status) {
+  const value = String(status || '').toLowerCase().trim();
+  const aliases = {
+    'in progress': 'processing',
+    'picked up': 'picked',
+  };
+  return aliases[value] || value;
+}
+
+function isTrackableStatus(status) {
+  return TRACKING_STATUSES.includes(normalizeOrderStatus(status));
+}
+
+function formatStatus(status) {
+  if (!status) return 'Pending';
+  const key = normalizeOrderStatus(status);
+  return STATUS_DISPLAY[key] || status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function mapApiOrderToView(o) {
+  const riderLocation = normalizeRiderLocation(o.riderLocation);
+  return {
+    id: o.id,
+    orderId: o.orderId,
+    status: formatStatus(o.status),
+    rawStatus: o.status,
+    store: o.pickup,
+    restaurant: o.pickup,
+    area: o.area,
+    address: o.dropoff,
+    deliveryAddress: o.dropoff,
+    items: o.items,
+    total: o.bill?.total ?? o.total,
+    pickup: o.pickup,
+    dropoff: o.dropoff,
+    createdAt: o.createdAt,
+    date: o.createdAt,
+    riderId: o.riderId,
+    riderName: o.riderName,
+    riderPhone: o.riderPhone,
+    rider: o.riderId
+      ? { id: o.riderId, name: o.riderName, phone: o.riderPhone }
+      : null,
+    estimatedArrivalTime: o.estimatedArrivalTime,
+    estimatedDuration: o.estimatedDuration,
+    minutesRemaining: o.minutesRemaining,
+    etaProgress: o.etaProgress,
+    riderLocation,
+    distanceToCustomer: o.distanceToCustomer,
+  };
+}
 
 const normalizeItemsText = (order) => {
   if (Array.isArray(order?.items) && order.items.length > 0) {
@@ -53,40 +105,203 @@ const normalizeItemsText = (order) => {
 };
 
 const OrderDetailsScreen = ({ navigation, route }) => {
-  const order = route?.params?.order || {};
-
+  const initialOrder = route?.params?.order || {};
+  const [order, setOrder] = useState(initialOrder);
+  const [loading, setLoading] = useState(true);
+  const [destinationCoords, setDestinationCoords] = useState(null);
+  const [distanceText, setDistanceText] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
 
-  const isPending = order.status === ORDER_STATUS.PENDING || order.status === 'pending' || order.status === 'Pending';
-  const riderId = order.rider?.id || order.riderId;
-  const statusLower = String(order.status || '').toLowerCase();
-  const showChatWithRider =
-    !!riderId &&
-    statusLower !== 'pending' &&
-    statusLower !== 'cancelled';
+  const orderMongoId = order.id || initialOrder.id;
+
+  const loadLiveOrder = useCallback(async () => {
+    if (!orderMongoId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const res = await ordersAPI.getById(orderMongoId);
+      if (res.success && res.data) {
+        setOrder(mapApiOrderToView(res.data));
+      }
+    } catch (error) {
+      console.error('Order details refresh error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [orderMongoId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      loadLiveOrder();
+
+      let poll = setInterval(loadLiveOrder, 10000);
+
+      return () => clearInterval(poll);
+    }, [loadLiveOrder])
+  );
+
+  const statusLower = normalizeOrderStatus(order.rawStatus || order.status);
+  const isPending = statusLower === 'pending';
+  const isTracking = isTrackableStatus(order.rawStatus || order.status);
 
   useEffect(() => {
-    if (isPending) return;
-    const interval = setInterval(() => {
-      setNowTick(Date.now());
-    }, 60 * 1000);
-    return () => clearInterval(interval);
-  }, [isPending]);
+    if (!isTracking) {
+      return undefined;
+    }
 
-  const estimatedWindow = useMemo(() => {
-    if (isPending) return null;
-    return getEstimatedWindow(order.createdAt || order.date);
-  }, [isPending, order.createdAt, order.date]);
+    const poll = setInterval(loadLiveOrder, 5000);
+    return () => clearInterval(poll);
+  }, [isTracking, loadLiveOrder]);
+
+  useEffect(() => {
+    if (!orderMongoId || !isTracking) {
+      return undefined;
+    }
+
+    let active = true;
+    let unsubscribeLocation = () => {};
+    let unsubscribeOrder = () => {};
+
+    (async () => {
+      await connectSocket();
+      if (!active) {
+        return;
+      }
+
+      await joinOrderRoom(orderMongoId);
+      if (!active) {
+        return;
+      }
+
+      unsubscribeLocation = onRiderLocationUpdated((payload) => {
+        const normalized = normalizeRiderLocation(payload);
+        if (!normalized) {
+          return;
+        }
+
+        setOrder((prev) => ({
+          ...prev,
+          riderLocation: normalized,
+        }));
+      });
+
+      unsubscribeOrder = onOrderUpdated((payload) => {
+        if (payload?.status) {
+          setOrder((prev) => ({
+            ...prev,
+            rawStatus: payload.status,
+            status: formatStatus(payload.status),
+          }));
+        }
+      });
+    })();
+
+    return () => {
+      active = false;
+      unsubscribeLocation();
+      unsubscribeOrder();
+      leaveOrderRoom();
+    };
+  }, [orderMongoId, isTracking]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const address = order.address || order.deliveryAddress || order.dropoff;
+    const area = order.area;
+    geocodeAddress(address, area).then((coords) => {
+      if (!cancelled) {
+        setDestinationCoords(coords);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [order.address, order.deliveryAddress, order.dropoff, order.area]);
+
+  const riderCoords = useMemo(() => {
+    const loc = normalizeRiderLocation(order.riderLocation);
+    if (loc) {
+      return { lat: loc.latitude, lng: loc.longitude };
+    }
+    return null;
+  }, [order.riderLocation]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!riderCoords) {
+      setDistanceText('');
+      return undefined;
+    }
+
+    if (!destinationCoords) {
+      setDistanceText('Rider location received');
+      return undefined;
+    }
+
+    getDrivingDistance(riderCoords, destinationCoords).then((matrix) => {
+      if (cancelled) {
+        return;
+      }
+      if (matrix?.distanceText && matrix?.durationText) {
+        setDistanceText(`Rider is ${matrix.distanceText} away • ${matrix.durationText} by road`);
+        return;
+      }
+      const km = haversineKm(
+        riderCoords.lat,
+        riderCoords.lng,
+        destinationCoords.lat,
+        destinationCoords.lng
+      );
+      setDistanceText(`Rider is ${km.toFixed(1)} km away`);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [riderCoords, destinationCoords]);
+
+  const riderId = order.rider?.id || order.riderId;
+  const showChatWithRider =
+    !!riderId && statusLower !== 'pending' && statusLower !== 'cancelled';
 
   const minutesRemaining = useMemo(() => {
-    if (isPending) return null;
-    return getMinutesRemaining(order.createdAt || order.date, nowTick);
-  }, [isPending, order.createdAt, order.date, nowTick]);
+    if (order.minutesRemaining != null) {
+      return order.minutesRemaining;
+    }
+    if (!order.estimatedArrivalTime) {
+      return null;
+    }
+    const diffMs = new Date(order.estimatedArrivalTime).getTime() - nowTick;
+    return Math.max(0, Math.ceil(diffMs / (60 * 1000)));
+  }, [order.minutesRemaining, order.estimatedArrivalTime, nowTick]);
 
   const etaProgress = useMemo(() => {
-    if (isPending) return 0;
-    return getEtaProgress(order.createdAt || order.date, nowTick);
-  }, [isPending, order.createdAt, order.date, nowTick]);
+    if (order.etaProgress != null) {
+      return clamp(order.etaProgress, 0, 1);
+    }
+    if (!order.estimatedDuration || minutesRemaining == null) {
+      return 0;
+    }
+    return clamp(
+      (order.estimatedDuration - minutesRemaining) / order.estimatedDuration,
+      0,
+      1
+    );
+  }, [order.etaProgress, order.estimatedDuration, minutesRemaining]);
+
+  const estimatedWindow = useMemo(() => {
+    if (isPending) {
+      return null;
+    }
+    return formatEtaWindow(order.estimatedArrivalTime);
+  }, [isPending, order.estimatedArrivalTime]);
 
   const riderName = order.riderName || order.rider?.name || 'Not assigned yet';
   const riderPhone = order.riderPhone || order.rider?.phone || '—';
@@ -127,6 +342,17 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     }
   };
 
+  if (loading && !order.id) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Header navigation={navigation} title="Order Details" showBackButton={true} />
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#2EC4B6" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <Header
@@ -140,31 +366,15 @@ const OrderDetailsScreen = ({ navigation, route }) => {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Enhanced Map Section */}
         <View style={styles.mapSection}>
-          <Image
-            source={require('../../assets/images/map.png')}
-            style={styles.mapImage}
-            resizeMode="cover"
+          <LiveTrackingMap
+            riderCoords={riderCoords}
+            destinationCoords={destinationCoords}
+            distanceText={distanceText}
+            loading={loading && !riderCoords && !destinationCoords}
+            isTracking={isTracking || !!destinationCoords}
+            trackingActive={isTracking && !!riderCoords}
           />
-          <View style={styles.mapGradient} />
-          
-          <View style={styles.mapOverlayHeader}>
-            <View style={styles.mapTitleContainer}>
-              <Ionicons name="location-sharp" size={20} color="#fff" />
-              <Text style={styles.mapTitle}>Track your rider</Text>
-            </View>
-            <TouchableOpacity style={styles.helpPill}>
-              <Ionicons name="help-circle-outline" size={16} color="#fff" />
-              <Text style={styles.helpText}>Help</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Rider Location Indicator */}
-          <View style={styles.riderLocationBadge}>
-            <View style={styles.pulsingDot} />
-            <Text style={styles.riderLocationText}>Rider is 1.2 km away</Text>
-          </View>
         </View>
 
         {/* Enhanced ETA Card */}
@@ -177,18 +387,22 @@ const OrderDetailsScreen = ({ navigation, route }) => {
               <Text style={styles.etaOverlayLabel}>Estimated arrival</Text>
               {isPending ? (
                 <Text style={styles.etaOverlayPending}>Waiting for rider acceptance</Text>
-              ) : (
+              ) : minutesRemaining != null ? (
                 <Text style={styles.etaOverlayMins}>{minutesRemaining} minutes</Text>
+              ) : (
+                <Text style={styles.etaOverlayPending}>ETA will appear when rider starts</Text>
               )}
             </View>
           </View>
 
-          {!isPending && (
+          {!isPending && minutesRemaining != null && (
             <>
-              <View style={styles.etaTimeWindow}>
-                <Ionicons name="calendar-outline" size={14} color="#64748B" />
-                <Text style={styles.etaOverlayWindow}>{estimatedWindow}</Text>
-              </View>
+              {estimatedWindow ? (
+                <View style={styles.etaTimeWindow}>
+                  <Ionicons name="calendar-outline" size={14} color="#64748B" />
+                  <Text style={styles.etaOverlayWindow}>Arriving by {estimatedWindow}</Text>
+                </View>
+              ) : null}
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${etaProgress * 100}%` }]} />
               </View>
@@ -360,6 +574,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   scroll: {
     flex: 1,
   },
@@ -372,7 +591,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -SPACING.lg,
     marginTop: -SPACING.md,
     height: 280,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#E2E8F0',
     marginBottom: SPACING.md,
     position: 'relative',
     overflow: 'hidden',

@@ -22,6 +22,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 import { NotificationUnreadProvider } from '../context/NotificationUnreadContext';
+import { UserProfileProvider } from '../context/UserProfileContext';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -131,6 +132,7 @@ const MainTabs = () => {
   }, []);
 
   return (
+    <UserProfileProvider>
     <NotificationUnreadProvider>
     <Tab.Navigator
       screenOptions={{
@@ -182,6 +184,7 @@ const MainTabs = () => {
       />
     </Tab.Navigator>
     </NotificationUnreadProvider>
+    </UserProfileProvider>
   );
 };
 

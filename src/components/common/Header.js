@@ -11,14 +11,16 @@ import {
   StatusBar,
   Dimensions,
   Platform,
+  Alert,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { BORDER_RADIUS } from '../../theme/spacing';
 import { SPACING } from '../../theme/spacing';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { getData } from '../../storage/asyncStorage';
-import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
+import { authAPI } from '../../services/api';
+import { resetToAuth } from '../../navigation/navigationRef';
 import { useNotificationUnread } from '../../context/NotificationUnreadContext';
+import { useUserProfile, getAvatarUri, getUserInitial } from '../../context/UserProfileContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -29,35 +31,64 @@ const Header = ({
   title,
   transparent = false,
 }) => {
-  const [user, setUser] = useState({ name: 'Fawad', email: 'fawad@example.com' });
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const { unreadCount, refreshUnreadCount } = useNotificationUnread();
+  const { user, stats, refreshProfile } = useUserProfile();
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      const userData = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
-      if (userData) setUser(userData);
-    };
-    fetchUser();
-  }, []);
+  const avatarUri = getAvatarUri(user);
+  const displayName = user?.name || 'User';
+  const displayEmail = user?.email || '';
 
   useFocusEffect(
     React.useCallback(() => {
       refreshUnreadCount();
-    }, [refreshUnreadCount])
+      refreshProfile();
+    }, [refreshUnreadCount, refreshProfile])
   );
 
   useEffect(() => {
     if (sidebarVisible) {
       refreshUnreadCount();
+      refreshProfile();
     }
-  }, [sidebarVisible, refreshUnreadCount]);
+  }, [sidebarVisible, refreshUnreadCount, refreshProfile]);
 
-  const statsData = [
-    { icon: 'receipt-outline', label: 'Total Orders', value: '12', color: '#554a4aff', progress: 0.8 },
-    { icon: 'time-outline', label: 'Active', value: '2', color: '#c7b407ff', progress: 0.4 },
-    { icon: 'checkmark-circle-outline', label: 'Completed', value: '10', color: '#4ECDC4', progress: 0.9 },
-  ];
+  const statsData = useMemo(() => {
+    const total = stats.totalOrders || 0;
+    const active = stats.activeOrders || 0;
+    const completed = stats.completedOrders || 0;
+
+    const progress = (value) => {
+      if (total <= 0) {
+        return 0;
+      }
+      return Math.min(1, value / total);
+    };
+
+    return [
+      {
+        icon: 'receipt-outline',
+        label: 'Total Orders',
+        value: String(total),
+        color: '#554a4aff',
+        progress: total > 0 ? 1 : 0,
+      },
+      {
+        icon: 'time-outline',
+        label: 'Active',
+        value: String(active),
+        color: '#c7b407ff',
+        progress: progress(active),
+      },
+      {
+        icon: 'checkmark-circle-outline',
+        label: 'Completed',
+        value: String(completed),
+        color: '#4ECDC4',
+        progress: progress(completed),
+      },
+    ];
+  }, [stats]);
 
   const menuItems = useMemo(
     () => [
@@ -100,6 +131,37 @@ const Header = ({
 
   const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            setSidebarVisible(false);
+            try {
+              await authAPI.logout();
+            } catch (error) {
+              console.error('Logout error:', error);
+            } finally {
+              resetToAuth();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderAvatar = (sizeStyle, textStyle, imageStyle) => {
+    if (avatarUri) {
+      return <Image source={{ uri: avatarUri }} style={imageStyle} />;
+    }
+    return <Text style={textStyle}>{getUserInitial(user)}</Text>;
+  };
+
   const renderSidebar = () => (
     <Modal
       animationType="slide"
@@ -125,14 +187,16 @@ const Header = ({
             <View style={styles.userProfileSection}>
               <View style={styles.userAvatarContainer}>
                 <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>
-                    {user.name ? user.name.charAt(0) : 'F'}
-                  </Text>
+                  {renderAvatar(
+                    styles.userAvatar,
+                    styles.userAvatarText,
+                    styles.userAvatarImage
+                  )}
                 </View>
                 <View style={styles.userStatusDot} />
               </View>
-              <Text style={styles.userName}>{user.name || 'Fawad Khan'}</Text>
-              <Text style={styles.userEmail}>{user.email || 'fawad@example.com'}</Text>
+              <Text style={styles.userName}>{displayName}</Text>
+              <Text style={styles.userEmail}>{displayEmail}</Text>
             </View>
 
             {/* Stats Cards Section */}
@@ -190,14 +254,14 @@ const Header = ({
 
             {/* Footer Section */}
             <View style={styles.sidebarFooter}>
-              <TouchableOpacity style={styles.logoutButton}>
+              <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
                 <Ionicons name="log-out-outline" size={22} color="#EF4444" />
                 <View style={styles.logoutTextBlock}>
                   <Text style={styles.logoutText}>Log Out</Text>
                   <Text style={styles.logoutSubtext}>You will be logged out from the app</Text>
                 </View>
               </TouchableOpacity>
-              <Text style={styles.versionText}>Version 2.0.0</Text>
+              <Text style={styles.versionText}>Version 1.0.0</Text>
             </View>
           </ScrollView>
         </View>
@@ -288,9 +352,11 @@ const Header = ({
             activeOpacity={0.9}
           >
             <View style={styles.headerAvatar}>
-              <Text style={styles.headerAvatarText}>
-                {user.name ? user.name.charAt(0) : 'F'}
-              </Text>
+              {renderAvatar(
+                styles.headerAvatar,
+                styles.headerAvatarText,
+                styles.headerAvatarImage
+              )}
             </View>
           </TouchableOpacity>
         </View>
@@ -354,6 +420,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
+  },
+  headerAvatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   logoContainer: {
     flex: 1,
@@ -486,6 +557,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 36,
     fontWeight: '800',
+  },
+  userAvatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   userStatusDot: {
     position: 'absolute',

@@ -16,6 +16,7 @@ import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { ordersAPI } from '../../services/api';
+import { normalizeRiderLocation } from '../../utils/maps';
 
 function formatStatus(status) {
   if (!status) return 'Pending';
@@ -81,6 +82,11 @@ function mapOrderToDetails(o) {
     riderPhone: o.rider?.phone,
     rider: o.rider,
     bill: o.bill,
+    estimatedArrivalTime: o.estimatedArrivalTime,
+    estimatedDuration: o.estimatedDuration,
+    minutesRemaining: o.minutesRemaining,
+    etaProgress: o.etaProgress,
+    riderLocation: normalizeRiderLocation(o.riderLocation),
   };
 }
 

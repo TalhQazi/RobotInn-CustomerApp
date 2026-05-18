@@ -17,3 +17,6 @@ export const ORDER_STATUS = {
 
 export const GOOGLE_MAPS_API_KEY = 'AIzaSyAbCnEye8zcIw9J-_mK55liYpeTlWLTkRY';
 export const GOOGLE_MAPS_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
+
+// Match api.js BASE_URL host (without /api/v1)
+export const SOCKET_URL = 'http://192.168.1.8:5050';

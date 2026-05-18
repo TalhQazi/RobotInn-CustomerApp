@@ -70,8 +70,13 @@ const SplashScreen = () => {
         const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
         if (token) {
           try {
-            await authAPI.getMe();
-            goMain = true;
+            const me = await authAPI.getMe();
+            const userType = String(me?.data?.type || '').toLowerCase();
+            if (userType === 'customer') {
+              goMain = true;
+            } else {
+              await authAPI.logout();
+            }
           } catch {
             await removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
             await removeData(ASYNC_STORAGE_KEYS.USER_DATA);
