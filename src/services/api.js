@@ -3,8 +3,8 @@ import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 
 // Use 10.0.2.2 for Android emulator, localhost for iOS simulator
 // For physical device, use your computer's actual IP address (e.g., 192.168.1.x)
-// const BASE_URL = 'http://192.168.1.8:5050/api/v1';
-const BASE_URL = 'https://robot-inn-backend.vercel.app/api/v1';
+const BASE_URL = 'http://192.168.1.8:5050/api/v1';
+// const BASE_URL = 'https://robot-inn-backend.vercel.app/api/v1';
 
 const getAuthHeaders = async () => {
   const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);

@@ -43,15 +43,8 @@ const Header = ({
     React.useCallback(() => {
       refreshUnreadCount();
       refreshProfile();
-    }, [refreshUnreadCount, refreshProfile])
+    }, [])
   );
-
-  useEffect(() => {
-    if (sidebarVisible) {
-      refreshUnreadCount();
-      refreshProfile();
-    }
-  }, [sidebarVisible, refreshUnreadCount, refreshProfile]);
 
   const statsData = useMemo(() => {
     const total = stats.totalOrders || 0;

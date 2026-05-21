@@ -14,15 +14,48 @@ if (Platform.OS === 'ios' && Geolocation.setRNConfiguration) {
 
 function getPositionOnce(options) {
   return new Promise((resolve, reject) => {
-    if (useNativeGeolocationService) {
-      GeolocationService.getCurrentPosition(resolve, reject, {
-        ...options,
-        forceRequestLocation: true,
-        showLocationDialog: true,
-      });
-      return;
+    try {
+      // Try standard Geolocation first (more stable on Android)
+      if (useNativeGeolocationService) {
+        try {
+          const positionCallback = (position) => {
+            try {
+              resolve(position);
+            } catch (error) {
+              console.error('Position callback error:', error);
+              reject(error);
+            }
+          };
+
+          const errorCallback = (error) => {
+            console.error('Standard Geolocation error:', error?.code, error?.message);
+            reject(error);
+          };
+
+          const requestOptions = {
+            timeout: options.timeout || 20000,
+            maximumAge: options.maximumAge || 0,
+            enableHighAccuracy: options.enableHighAccuracy || false,
+          };
+
+          // Try community geolocation first on Android, it's more stable
+          if (Platform.OS === 'android') {
+            Geolocation.getCurrentPosition(positionCallback, errorCallback, requestOptions);
+          } else {
+            // iOS: use GeolocationService
+            GeolocationService.getCurrentPosition(positionCallback, errorCallback, requestOptions);
+          }
+        } catch (nativeError) {
+          console.error('Native geolocation error:', nativeError);
+          reject(nativeError);
+        }
+        return;
+      }
+      Geolocation.getCurrentPosition(resolve, reject, options);
+    } catch (error) {
+      console.error('getPositionOnce error:', error);
+      reject(error);
     }
-    Geolocation.getCurrentPosition(resolve, reject, options);
   });
 }
 
@@ -56,8 +89,6 @@ function watchForPosition(options, watchTimeoutMs) {
       fastestInterval: 500,
       maximumAge: options.maximumAge ?? 10000,
       timeout: watchTimeoutMs,
-      forceRequestLocation: true,
-      showLocationDialog: true,
     };
 
     if (useNativeGeolocationService) {
@@ -104,33 +135,132 @@ export async function requestLocationPermission() {
 
 export async function reverseGeocodeCoordinates(lat, lng) {
   try {
-    const url = `${GOOGLE_MAPS_GEOCODE_URL}?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
-    const response = await fetch(url);
-    const json = await response.json();
-    if (json.status === 'OK' && json.results?.length > 0) {
-      return json.results[0].formatted_address;
+    console.log('🔍 Reverse geocoding for:', lat, lng);
+
+    // Try backup (free) service first
+    const backupResult = await reverseGeocodeWithBackup(lat, lng);
+    if (backupResult) {
+      console.log('✅ Using free geocoding service');
+      return backupResult;
     }
-    if (json.status === 'REQUEST_DENIED') {
-      console.warn('Geocoding API denied:', json.error_message);
+
+    // If backup fails, try Google Maps
+    console.log('📍 Trying Google Maps Geocoding...');
+    const url = `${GOOGLE_MAPS_GEOCODE_URL}?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
+    console.log('📍 Geocoding API URL:', url.split('key=')[0] + 'key=***');
+
+    const response = await fetch(url);
+    console.log('📡 API Response status:', response.status);
+
+    if (!response.ok) {
+      console.error('API response not OK:', response.status, response.statusText);
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const json = await response.json();
+    console.log('✅ Geocoding response:', JSON.stringify(json, null, 2));
+
+    if (json.status === 'OK' && json.results?.length > 0) {
+      const address = json.results[0].formatted_address;
+      console.log('🏠 Found address:', address);
+      return address;
+    }
+
+    if (json.status === 'ZERO_RESULTS') {
+      console.warn('⚠️ No results found for coordinates');
+    } else if (json.status === 'REQUEST_DENIED') {
+      console.error('❌ Geocoding API denied - Enable it in Google Cloud Console');
+    } else if (json.status === 'INVALID_REQUEST') {
+      console.error('❌ Invalid request:', json.error_message);
+    } else if (json.status === 'OVER_QUERY_LIMIT') {
+      console.error('❌ API quota exceeded');
     }
   } catch (error) {
-    console.error('Reverse geocode error:', error);
+    console.error('❌ Reverse geocode error:', error);
   }
-  return `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
+
+  const fallback = `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
+  console.log('📌 Using fallback format:', fallback);
+  return fallback;
+}
+
+async function reverseGeocodeWithBackup(lat, lng) {
+  try {
+    console.log('🔄 Using OpenStreetMap (free) geocoding service...');
+    // Using Open Street Map's Nominatim service (free, no API key needed)
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+
+    const response = await fetch(url, {
+      headers: {
+        'Accept-Language': 'en',
+        'User-Agent': 'RobotInnApp/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn('⚠️ Backup geocoding failed:', response.status);
+      return null;
+    }
+
+    const json = await response.json();
+    console.log('✅ Backup geocoding response:', JSON.stringify(json, null, 2));
+
+    if (json.address) {
+      // Build a readable address from the components
+      const parts = [];
+
+      // Priority order for address components
+      if (json.address.house_number) parts.push(json.address.house_number);
+      if (json.address.road) parts.push(json.address.road);
+      if (json.address.neighbourhood) parts.push(json.address.neighbourhood);
+      if (json.address.suburb) parts.push(json.address.suburb);
+      if (json.address.city_district) parts.push(json.address.city_district);
+      if (json.address.city) parts.push(json.address.city);
+      if (json.address.postcode) parts.push(json.address.postcode);
+      if (json.address.country) parts.push(json.address.country);
+
+      const address = parts.filter(Boolean).join(', ') || json.display_name;
+      console.log('🏠 Address found:', address);
+      return address;
+    }
+
+    if (json.display_name) {
+      console.log('🏠 Display name found:', json.display_name);
+      return json.display_name;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('❌ Backup geocoding error:', error);
+    return null;
+  }
 }
 
 export async function getCurrentCoordinates() {
   const attempts = [
-    { enableHighAccuracy: false, timeout: 20000, maximumAge: 600000 },
-    { enableHighAccuracy: false, timeout: 30000, maximumAge: 120000 },
-    { enableHighAccuracy: false, timeout: 40000, maximumAge: 0 },
-    { enableHighAccuracy: true, timeout: 45000, maximumAge: 0 },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 },
+    { enableHighAccuracy: false, timeout: 15000, maximumAge: 120000 },
+    { enableHighAccuracy: false, timeout: 20000, maximumAge: 0 },
+    { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 },
   ];
 
   let lastError = null;
+
   for (const options of attempts) {
     try {
-      return await getPositionOnce(options);
+      const promise = getPositionOnce(options);
+
+      // Add timeout wrapper to catch hanging requests
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject({ code: 3, message: 'Location request timed out' }), options.timeout + 2000);
+      });
+
+      const position = await Promise.race([promise, timeoutPromise]);
+
+      if (position && position.coords && position.coords.latitude !== undefined) {
+        return position;
+      }
+      lastError = { code: 2, message: 'Invalid position data received' };
     } catch (error) {
       lastError = error;
       console.log('getCurrentPosition attempt failed:', error?.code, error?.message);
@@ -140,7 +270,7 @@ export async function getCurrentCoordinates() {
   try {
     return await watchForPosition(
       { enableHighAccuracy: false, maximumAge: 120000 },
-      40000
+      30000
     );
   } catch (watchError) {
     throw lastError || watchError;
@@ -174,27 +304,66 @@ export function showLocationErrorAlert(error) {
   Alert.alert('Location error', message, buttons);
 }
 
-/**
- * Returns { lat, lng, address } after permission + GPS + reverse geocode.
- */
 export async function getCurrentLocationWithAddress() {
-  const hasPermission = await requestLocationPermission();
-  if (!hasPermission) {
-    const err = { code: 1, message: 'Permission denied' };
-    showLocationErrorAlert(err);
-    throw err;
+  try {
+    let hasPermission = false;
+    try {
+      hasPermission = await requestLocationPermission();
+    } catch (permError) {
+      console.error('Permission error:', permError);
+      const err = { code: 1, message: 'Failed to request location permission' };
+      showLocationErrorAlert(err);
+      throw err;
+    }
+
+    if (!hasPermission) {
+      const err = { code: 1, message: 'Location permission denied' };
+      showLocationErrorAlert(err);
+      throw err;
+    }
+  } catch (error) {
+    console.error('Permission request failed:', error);
+    throw error;
   }
 
   let position;
   try {
     position = await getCurrentCoordinates();
   } catch (error) {
+    console.error('Get coordinates error:', error);
     showLocationErrorAlert(error);
     throw error;
   }
 
-  const { latitude, longitude } = position.coords;
-  const formattedAddress = await reverseGeocodeCoordinates(latitude, longitude);
+  if (!position || !position.coords || position.coords.latitude === undefined) {
+    const err = { code: 2, message: 'Could not retrieve valid location data' };
+    console.error('Invalid position data:', position);
+    showLocationErrorAlert(err);
+    throw err;
+  }
+
+  let latitude, longitude;
+  try {
+    latitude = position.coords.latitude;
+    longitude = position.coords.longitude;
+
+    if (!latitude || !longitude || typeof latitude !== 'number' || typeof longitude !== 'number') {
+      throw new Error('Invalid coordinates format');
+    }
+  } catch (parseError) {
+    console.error('Coordinate parsing error:', parseError);
+    const err = { code: 2, message: 'Invalid location coordinates' };
+    showLocationErrorAlert(err);
+    throw err;
+  }
+
+  let formattedAddress;
+  try {
+    formattedAddress = await reverseGeocodeCoordinates(latitude, longitude);
+  } catch (geocodeError) {
+    console.error('Geocoding error:', geocodeError);
+    formattedAddress = `${Number(latitude).toFixed(6)}, ${Number(longitude).toFixed(6)}`;
+  }
 
   return {
     lat: latitude,

@@ -6,7 +6,6 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,6 +13,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
 import LiveTrackingMap from '../../components/order/LiveTrackingMap';
+import ThemedAlert from '../../components/common/ThemedAlert';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import { ordersAPI } from '../../services/api';
@@ -108,6 +108,9 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   const initialOrder = route?.params?.order || {};
   const [order, setOrder] = useState(initialOrder);
   const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [themedAlert, setThemedAlert] = useState({ visible: false, title: '', message: '', buttons: [] });
   const [destinationCoords, setDestinationCoords] = useState(null);
   const [distanceText, setDistanceText] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
@@ -119,6 +122,12 @@ const OrderDetailsScreen = ({ navigation, route }) => {
       setLoading(false);
       return;
     }
+
+    const shouldShowLoading = !initialLoadComplete;
+    if (shouldShowLoading) {
+      setLoading(true);
+    }
+
     try {
       const res = await ordersAPI.getById(orderMongoId);
       if (res.success && res.data) {
@@ -127,13 +136,15 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     } catch (error) {
       console.error('Order details refresh error:', error);
     } finally {
-      setLoading(false);
+      if (shouldShowLoading) {
+        setLoading(false);
+      }
+      setInitialLoadComplete(true);
     }
-  }, [orderMongoId]);
+  }, [orderMongoId, initialLoadComplete]);
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       loadLiveOrder();
 
       let poll = setInterval(loadLiveOrder, 10000);
@@ -270,6 +281,64 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   const riderId = order.rider?.id || order.riderId;
   const showChatWithRider =
     !!riderId && statusLower !== 'pending' && statusLower !== 'cancelled';
+
+  const showThemedAlert = ({ title, message, buttons = [] }) => {
+    setThemedAlert({ visible: true, title, message, buttons });
+  };
+
+  const hideThemedAlert = () => {
+    setThemedAlert({ visible: false, title: '', message: '', buttons: [] });
+  };
+
+  const handleCancelOrder = () => {
+    if (!orderMongoId) {
+      showThemedAlert({
+        title: 'Unable to cancel',
+        message: 'This order cannot be cancelled at the moment.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+      return;
+    }
+
+    showThemedAlert({
+      title: 'Cancel Order',
+      message: 'Are you sure you want to cancel this order? This can only be done while it is still pending.',
+      buttons: [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            setCancelling(true);
+            try {
+              const response = await ordersAPI.cancel(orderMongoId);
+              if (response.success) {
+                setOrder((prev) => ({
+                  ...prev,
+                  rawStatus: 'cancelled',
+                  status: formatStatus('cancelled')
+                }));
+                showThemedAlert({
+                  title: 'Order Cancelled',
+                  message: 'Your order has been cancelled successfully.',
+                  buttons: [{ text: 'OK', style: 'cancel' }]
+                });
+                navigation.goBack();
+              }
+            } catch (error) {
+              showThemedAlert({
+                title: 'Cancel failed',
+                message: error.message || 'Unable to cancel order. Please try again.',
+                buttons: [{ text: 'OK', style: 'cancel' }]
+              });
+            } finally {
+              setCancelling(false);
+            }
+          }
+        }
+      ]
+    });
+  };
 
   const minutesRemaining = useMemo(() => {
     if (order.minutesRemaining != null) {
@@ -423,7 +492,11 @@ const OrderDetailsScreen = ({ navigation, route }) => {
             style={styles.chatButton}
             onPress={() => {
               if (!riderId) {
-                Alert.alert('No rider', 'A rider has not been assigned to this order yet.');
+                showThemedAlert({
+                  title: 'No rider',
+                  message: 'A rider has not been assigned to this order yet.',
+                  buttons: [{ text: 'OK', style: 'cancel' }]
+                });
                 return;
               }
               navigation.navigate('Chat', {
@@ -513,14 +586,26 @@ const OrderDetailsScreen = ({ navigation, route }) => {
           </View>
 
           <View style={styles.statusRow}>
-            <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}>
+            <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}> 
               <Ionicons name={getStatusIcon()} size={16} color={getStatusColor()} />
-              <Text style={[styles.statusText, { color: getStatusColor() }]}>
+              <Text style={[styles.statusText, { color: getStatusColor() }]}> 
                 {order.status || '—'}
               </Text>
             </View>
           </View>
 
+          {isPending && (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[styles.cancelButton, cancelling && styles.cancelButtonDisabled]}
+              onPress={handleCancelOrder}
+              disabled={cancelling}
+            >
+              <Text style={styles.cancelButtonText}>
+                {cancelling ? 'Cancelling...' : 'Cancel Order'}
+              </Text>
+            </TouchableOpacity>
+          )}
           <View style={styles.divider} />
 
           <View style={styles.infoSection}>
@@ -565,6 +650,13 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
         </Card>
       </ScrollView>
+      <ThemedAlert
+        visible={themedAlert.visible}
+        title={themedAlert.title}
+        message={themedAlert.message}
+        buttons={themedAlert.buttons}
+        onRequestClose={hideThemedAlert}
+      />
     </SafeAreaView>
   );
 };
@@ -970,6 +1062,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: '#1E293B',
+  },
+  cancelButton: {
+    backgroundColor: '#F87171',
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonDisabled: {
+    opacity: 0.6,
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   paymentSummary: {
     marginTop: SPACING.lg,

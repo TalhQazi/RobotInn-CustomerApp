@@ -132,8 +132,9 @@ const SignupScreen = ({ navigation }) => {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password should be at least 6 characters.');
+    const passwordPattern = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordPattern.test(password)) {
+      setError('Password must be at least 8 characters and include 1 uppercase letter and 1 number.');
       return;
     }
 
