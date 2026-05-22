@@ -15,6 +15,7 @@ import MyAddressesScreen from '../screens/main/MyAddressesScreen';
 import HelpCenterScreen from '../screens/main/HelpCenterScreen';
 import OrderDetailsScreen from '../screens/main/OrderDetailsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
+import BillsScreen from '../screens/main/BillsScreen';
 import { COLORS } from '../theme/colors';
 import { Text, View, StyleSheet, Platform } from 'react-native';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
@@ -80,6 +81,7 @@ const ProfileStack = () => (
     <Stack.Screen name="ProfileHome" component={ProfileScreen} />
     <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
     <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+    <Stack.Screen name="Bills" component={BillsScreen} />
     <Stack.Screen name="Chat" component={ChatScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
     <Stack.Screen name="Notifications" component={NotificationScreen} />
@@ -126,9 +128,7 @@ const MainTabs = () => {
       setCartCount(cart.length);
     };
 
-    // Poll storage for updates (simple for UI phase)
-    const interval = setInterval(fetchCartCount, 1000);
-    return () => clearInterval(interval);
+    fetchCartCount();
   }, []);
 
   return (

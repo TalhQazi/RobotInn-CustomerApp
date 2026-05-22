@@ -94,6 +94,50 @@ const OrderHistoryScreen = ({ navigation }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [cancellingOrderId, setCancellingOrderId] = useState(null);
+
+  const isPendingStatus = (status) => String(status || '').toLowerCase() === 'pending';
+
+  const cancelOrder = async (order) => {
+    if (!order?.id) {
+      return;
+    }
+
+    setCancellingOrderId(order.id);
+    try {
+      const response = await ordersAPI.cancel(order.id);
+      if (response.success) {
+        Alert.alert('Order Cancelled', `Order #${order.orderId || order.id} has been cancelled successfully.`, [
+          { text: 'OK', style: 'cancel' }
+        ]);
+        setOrders((prev) => prev.map((o) => (
+          o.id === order.id ? { ...o, status: 'Cancelled', rawStatus: 'cancelled' } : o
+        )));
+      } else {
+        Alert.alert('Cancel failed', response.message || 'Unable to cancel this order. Please try again.', [
+          { text: 'OK', style: 'cancel' }
+        ]);
+      }
+    } catch (error) {
+      console.error('Order cancel error:', error);
+      Alert.alert('Cancel failed', error?.message || 'Unable to cancel this order. Please try again.', [
+        { text: 'OK', style: 'cancel' }
+      ]);
+    } finally {
+      setCancellingOrderId(null);
+    }
+  };
+
+  const promptCancelOrder = (order) => {
+    Alert.alert(
+      'Cancel Order',
+      `Are you sure you want to cancel order #${order.orderId || order.id}? This can only be cancelled while pending.`,
+      [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes, Cancel', onPress: () => cancelOrder(order) },
+      ]
+    );
+  };
 
   const loadOrders = useCallback(async () => {
     try {
@@ -158,14 +202,15 @@ const OrderHistoryScreen = ({ navigation }) => {
   };
 
   const renderOrderItem = ({ item }) => (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={() =>
-        navigation.navigate('OrderDetails', { order: mapOrderToDetails(item.raw) })
-      }
-    >
-      <Card style={styles.orderCard}>
-        <View style={styles.orderHeader}>
+    <View style={styles.orderCardWrapper}>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() =>
+          navigation.navigate('OrderDetails', { order: mapOrderToDetails(item.raw) })
+        }
+      >
+        <Card style={styles.orderCard}>
+          <View style={styles.orderHeader}>
           <View style={styles.restaurantInfo}>
             <View style={styles.restaurantIcon}>
               <Ionicons name="receipt-outline" size={24} color={COLORS.primary} />
@@ -202,8 +247,37 @@ const OrderHistoryScreen = ({ navigation }) => {
           <Text style={styles.viewDetailsText}>View details</Text>
           <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
         </View>
-      </Card>
-    </TouchableOpacity>
+        {isPendingStatus(item.rawStatus) && (
+          <TouchableOpacity
+            style={styles.cancelOrderButton}
+            onPress={() => promptCancelOrder(item)}
+            activeOpacity={0.85}
+            disabled={cancellingOrderId === item.id}
+          >
+            {cancellingOrderId === item.id ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.cancelOrderText}>Cancel Order</Text>
+            )}
+          </TouchableOpacity>
+        )}
+        </Card>
+      </TouchableOpacity>
+      {isPendingStatus(item.rawStatus) && (
+        <TouchableOpacity
+          style={styles.cancelOrderButton}
+          onPress={() => promptCancelOrder(item)}
+          activeOpacity={0.85}
+          disabled={cancellingOrderId === item.id}
+        >
+          {cancellingOrderId === item.id ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.cancelOrderText}>Cancel Order</Text>
+          )}
+        </TouchableOpacity>
+      )}
+    </View>
   );
 
   return (
@@ -276,7 +350,10 @@ const styles = StyleSheet.create({
   },
   summaryNumber: { fontSize: 24, fontWeight: '800', color: COLORS.primary },
   summaryLabel: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
-  orderCard: { marginBottom: SPACING.md, padding: SPACING.md },
+  orderCardWrapper: {
+    marginBottom: SPACING.lg,
+  },
+  orderCard: { padding: SPACING.md },
   orderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -320,6 +397,19 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
   },
   viewDetailsText: { fontSize: 14, fontWeight: '600', color: COLORS.primary, marginRight: 4 },
+  cancelOrderButton: {
+    marginTop: SPACING.sm,
+    paddingVertical: 10,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelOrderText: {
+    color: COLORS.white,
+    fontWeight: '700',
+    fontSize: 14,
+  },
   emptyContainer: { alignItems: 'center', paddingTop: 100, paddingHorizontal: SPACING.xl },
   emptyText: { fontSize: 16, color: COLORS.textSecondary, marginTop: SPACING.md, fontWeight: '600' },
   emptyHint: { fontSize: 14, color: COLORS.textSecondary, marginTop: SPACING.sm, textAlign: 'center' },

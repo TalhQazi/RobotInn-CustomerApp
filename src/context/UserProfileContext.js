@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { getData, storeData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 import { usersAPI } from '../services/api';
@@ -64,6 +64,10 @@ export function UserProfileProvider({ children }) {
       setLoadingProfile(false);
     }
   }, [applyProfileData]);
+
+  useEffect(() => {
+    refreshProfile();
+  }, [refreshProfile]);
 
   const updateLocalUser = useCallback(async (partialUser) => {
     const current = (await getData(ASYNC_STORAGE_KEYS.USER_DATA)) || user || {};

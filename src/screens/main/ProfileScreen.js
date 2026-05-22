@@ -88,6 +88,7 @@ const ProfileScreen = ({ navigation }) => {
       }
 
       setUploadingAvatar(true);
+      console.log('Starting profile picture upload...', { uri: asset.uri, type: asset.type });
 
       const uploadRes = await uploadAPI.uploadImage({
         uri: asset.uri,
@@ -95,15 +96,27 @@ const ProfileScreen = ({ navigation }) => {
         type: asset.type || 'image/jpeg',
       });
 
-      const avatarUrl = uploadRes?.url || uploadRes?.data?.url;
+      console.log('Upload response:', uploadRes);
+
+      const avatarUrl = uploadRes?.url;
       if (!avatarUrl) {
+        console.error('No URL in upload response:', uploadRes);
         throw new Error('Upload did not return an image URL');
       }
 
+      console.log('Updating profile with avatar URL:', avatarUrl);
+      
       const profileRes = await usersAPI.updateProfile({ avatar: avatarUrl });
-      const updatedUser = profileRes?.data || { avatar: avatarUrl };
-      await updateLocalUser(updatedUser);
-      Alert.alert('Success', 'Profile picture updated');
+      console.log('Profile update response:', profileRes);
+      
+      if (profileRes?.success) {
+        const updatedUser = profileRes?.data || { avatar: avatarUrl };
+        await updateLocalUser(updatedUser);
+        await refreshProfile();
+        Alert.alert('Success', 'Profile picture updated successfully');
+      } else {
+        throw new Error(profileRes?.message || 'Failed to update profile');
+      }
     } catch (error) {
       console.error('Profile picture upload error:', error);
       Alert.alert('Error', error?.message || 'Could not update profile picture');
@@ -201,11 +214,11 @@ const ProfileScreen = ({ navigation }) => {
             title="Orders" 
             onPress={() => navigation.navigate('Requests')} 
           />
-          <QuickCard 
+          {/* <QuickCard 
             icon="heart-outline" 
             title="Favourites" 
             onPress={() => {}} 
-          />
+          /> */}
           <QuickCard 
             icon="location-outline" 
             title="Addresses" 

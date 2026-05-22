@@ -20,6 +20,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
 import { authAPI } from '../../services/api';
+import { registerPendingFcmToken } from '../../services/firebase';
 import { resetToMain } from '../../navigation/navigationRef';
 
 const { width, height } = Dimensions.get('window');
@@ -119,8 +120,16 @@ const LoginScreen = ({ navigation }) => {
         title: 'Welcome Back!',
         message: `Welcome back, ${response.user?.name || 'User'}!`,
         type: 'success',
-        onConfirm: () => {
+        onConfirm: async () => {
           setAlertVisible(false);
+          // Register FCM token now that we have auth token
+          try {
+            console.log('🔐 User logged in successfully');
+            console.log('📝 AUTH TOKEN AVAILABLE - Attempting to register pending FCM token...');
+            await registerPendingFcmToken();
+          } catch (error) {
+            console.error('❌ Error registering pending FCM token after login:', error);
+          }
           resetToMain();
         },
       });

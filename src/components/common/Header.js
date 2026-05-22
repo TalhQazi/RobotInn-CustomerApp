@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -32,19 +31,12 @@ const Header = ({
   transparent = false,
 }) => {
   const [sidebarVisible, setSidebarVisible] = useState(false);
-  const { unreadCount, refreshUnreadCount } = useNotificationUnread();
-  const { user, stats, refreshProfile } = useUserProfile();
+  const { unreadCount } = useNotificationUnread();
+  const { user, stats } = useUserProfile();
 
   const avatarUri = getAvatarUri(user);
   const displayName = user?.name || 'User';
   const displayEmail = user?.email || '';
-
-  useFocusEffect(
-    React.useCallback(() => {
-      refreshUnreadCount();
-      refreshProfile();
-    }, [])
-  );
 
   const statsData = useMemo(() => {
     const total = stats.totalOrders || 0;
@@ -86,7 +78,8 @@ const Header = ({
   const menuItems = useMemo(
     () => [
       { icon: 'person-outline', label: 'My Profile', subtitle: 'Manage your profile details', screen: 'Profile', color: '#FF6B6B', iconBg: '#FFF0F0' },
-      { icon: 'time-outline', label: 'Order History', subtitle: 'View your past orders', screen: 'OrderHistory', color: '#FFA235', iconBg: '#FFF5EB' },
+      // { icon: 'time-outline', label: 'Order History', subtitle: 'View your past orders', screen: 'OrderHistory', color: '#FFA235', iconBg: '#FFF5EB' },
+      { icon: 'receipt-outline', label: 'My Bills', subtitle: 'View and pay your bills', screen: 'Bills', color: '#10B981', iconBg: '#ECFDF5' },
       { icon: 'location-outline', label: 'Saved Addresses', subtitle: 'Manage your saved locations', screen: 'MyAddresses', color: '#4ECDC4', iconBg: '#E8FAF8' },
       { icon: 'notifications-outline', label: 'Notifications', subtitle: 'View all notifications', screen: 'Notifications', color: '#A78BFA', iconBg: '#F3EEFF', badge: unreadCount },
       { icon: 'chatbubble-outline', label: 'Messages', subtitle: 'Chat with support', screen: 'Messages', color: '#60A5FA', iconBg: '#EBF4FF', badge: 0 },
@@ -107,6 +100,11 @@ const Header = ({
     setSidebarVisible(false);
     if (item.screen === 'Notifications') {
       navigateToNotifications();
+      return;
+    }
+    // Route Bills into the Profile stack when Profile is the parent navigator
+    if (item.screen === 'Bills' && navigation.getParent()) {
+      navigation.getParent().navigate('Profile', { screen: 'Bills' });
       return;
     }
     if (item.screen === 'Profile' && navigation.getParent()) {

@@ -2,8 +2,14 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { StatusBar } from 'react-native';
+import { StatusBar, LogBox } from 'react-native';
 import 'react-native-gesture-handler';
+
+// Suppress Firebase deprecation warnings
+LogBox.ignoreLogs([
+  'This method is deprecated (as well as all React Native Firebase namespaced API)',
+  'Please use `getApp()` instead',
+]);
 
 import SplashScreen from './screens/SplashScreen';
 import AuthNavigator from './navigation/AuthNavigator';

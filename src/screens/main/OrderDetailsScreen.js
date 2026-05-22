@@ -97,11 +97,44 @@ function mapApiOrderToView(o) {
   };
 }
 
+const getItemLabel = (item) => {
+  if (typeof item === 'string') {
+    return item;
+  }
+
+  if (!item || typeof item !== 'object') {
+    return String(item || '');
+  }
+
+  return (
+    item.name ||
+    item.text ||
+    item.itemName ||
+    item.title ||
+    item.label ||
+    item.product?.name ||
+    item.product?.title ||
+    item.item?.name ||
+    item.nameWithQuantity ||
+    JSON.stringify(item)
+  );
+};
+
 const normalizeItemsText = (order) => {
   if (Array.isArray(order?.items) && order.items.length > 0) {
-    return order.items.map((i) => i?.text || i?.itemName || i).join(', ');
+    return order.items.map(getItemLabel).filter(Boolean).join(', ');
   }
-  return order?.itemName || '';
+  return getItemLabel(order?.itemName || order?.items || '');
+};
+
+const getOrderItemList = (order) => {
+  if (Array.isArray(order?.items)) {
+    return order.items;
+  }
+  if (order?.items) {
+    return [order.items];
+  }
+  return [];
 };
 
 const OrderDetailsScreen = ({ navigation, route }) => {
@@ -155,7 +188,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
   const statusLower = normalizeOrderStatus(order.rawStatus || order.status);
   const isPending = statusLower === 'pending';
-  const isTracking = isTrackableStatus(order.rawStatus || order.status);
+  const isTracking = isTrackableStatus(order.rawStatus || order.status) || Boolean(order.riderId);
 
   useEffect(() => {
     if (!isTracking) {
@@ -365,12 +398,54 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     );
   }, [order.etaProgress, order.estimatedDuration, minutesRemaining]);
 
+  const statusProgress = useMemo(() => {
+    switch (statusLower) {
+      case 'pending':
+        return 0.08;
+      case 'accepted':
+        return 0.33;
+      case 'processing':
+      case 'in progress':
+        return 0.66;
+      case 'picked':
+      case 'picked up':
+        return 0.85;
+      case 'delivered':
+      case 'completed':
+        return 1;
+      default:
+        return etaProgress;
+    }
+  }, [statusLower, etaProgress]);
+
+  const isDelivered = statusLower === 'delivered' || statusLower === 'completed';
+
   const estimatedWindow = useMemo(() => {
-    if (isPending) {
+    if (isPending || isDelivered) {
       return null;
     }
     return formatEtaWindow(order.estimatedArrivalTime);
-  }, [isPending, order.estimatedArrivalTime]);
+  }, [isPending, isDelivered, order.estimatedArrivalTime]);
+
+  const etaStatusText = useMemo(() => {
+    if (isDelivered) {
+      return 'Order completed';
+    }
+    switch (statusLower) {
+      case 'pending':
+        return 'Waiting for rider acceptance';
+      case 'accepted':
+        return 'Order accepted';
+      case 'processing':
+      case 'in progress':
+        return 'Order in progress';
+      case 'picked':
+      case 'picked up':
+        return 'Order picked up';
+      default:
+        return minutesRemaining != null ? `${minutesRemaining} minutes` : 'ETA will appear when rider starts';
+    }
+  }, [isDelivered, statusLower, minutesRemaining]);
 
   const riderName = order.riderName || order.rider?.name || 'Not assigned yet';
   const riderPhone = order.riderPhone || order.rider?.phone || '—';
@@ -380,6 +455,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   const areaName = order.area || '—';
   const addressText = order.address || order.deliveryAddress || '—';
   const itemsText = normalizeItemsText(order);
+  const orderItemList = getOrderItemList(order);
 
   const getStatusColor = () => {
     switch (order.status) {
@@ -453,36 +529,30 @@ const OrderDetailsScreen = ({ navigation, route }) => {
               <Ionicons name="stopwatch-outline" size={22} color="#2EC4B6" />
             </View>
             <View>
-              <Text style={styles.etaOverlayLabel}>Estimated arrival</Text>
-              {isPending ? (
-                <Text style={styles.etaOverlayPending}>Waiting for rider acceptance</Text>
-              ) : minutesRemaining != null ? (
-                <Text style={styles.etaOverlayMins}>{minutesRemaining} minutes</Text>
-              ) : (
-                <Text style={styles.etaOverlayPending}>ETA will appear when rider starts</Text>
-              )}
+              <Text style={styles.etaOverlayLabel}>Order progress</Text>
+              <Text style={isDelivered ? styles.etaOverlayCompleted : styles.etaOverlayMins}>
+                {etaStatusText}
+              </Text>
             </View>
           </View>
 
-          {!isPending && minutesRemaining != null && (
-            <>
-              {estimatedWindow ? (
-                <View style={styles.etaTimeWindow}>
-                  <Ionicons name="calendar-outline" size={14} color="#64748B" />
-                  <Text style={styles.etaOverlayWindow}>Arriving by {estimatedWindow}</Text>
-                </View>
-              ) : null}
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${etaProgress * 100}%` }]} />
-              </View>
-              <View style={styles.progressLabels}>
-                <Text style={styles.progressLabel}>Order placed</Text>
-                <Text style={styles.progressLabel}>Preparing</Text>
-                <Text style={styles.progressLabel}>On the way</Text>
-                <Text style={styles.progressLabel}>Delivered</Text>
-              </View>
-            </>
-          )}
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${statusProgress * 100}%` }]} />
+          </View>
+
+          {!isDelivered && estimatedWindow ? (
+            <View style={styles.etaTimeWindow}>
+              <Ionicons name="calendar-outline" size={14} color="#64748B" />
+              <Text style={styles.etaOverlayWindow}>Arriving by {estimatedWindow}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.progressLabels}>
+            <Text style={styles.progressLabel}>Order placed</Text>
+            <Text style={styles.progressLabel}>Preparing</Text>
+            <Text style={styles.progressLabel}>On the way</Text>
+            <Text style={styles.progressLabel}>Delivered</Text>
+          </View>
         </View>
 
         {/* Enhanced Chat Button */}
@@ -562,10 +632,10 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
           <View style={styles.detailRow}>
             <View style={styles.detailIconLabel}>
-              <Ionicons name="car-outline" size={16} color="#64748B" />
-              <Text style={styles.detailLabel}>Bike Registration</Text>
+              {/* <Ionicons name="car-outline" size={16} color="#64748B" />
+              <Text style={styles.detailLabel}>Bike Registration</Text> */}
             </View>
-            <Text style={styles.detailValue}>{riderBikeReg}</Text>
+            {/* <Text style={styles.detailValue}>{riderBikeReg}</Text> */}
           </View>
         </Card>
 
@@ -639,9 +709,9 @@ const OrderDetailsScreen = ({ navigation, route }) => {
                 <Text style={styles.infoLabel}>Items Ordered</Text>
               </View>
               <View style={styles.itemsList}>
-                {itemsText.split(', ').map((item, index) => (
-                  <View key={index} style={styles.itemChip}>
-                    <Text style={styles.itemChipText}>{item}</Text>
+                {orderItemList.map((item, index) => (
+                  <View key={`${index}-${getItemLabel(item)}`} style={styles.itemChip}>
+                    <Text style={styles.itemChipText}>{getItemLabel(item)}</Text>
                   </View>
                 ))}
               </View>
@@ -799,6 +869,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFA235',
+  },
+  etaOverlayCompleted: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#22C55E',
   },
   etaTimeWindow: {
     flexDirection: 'row',

@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, SafeAreaView, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, SafeAreaView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../theme/colors';
 import { SPACING } from '../../theme/spacing';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
+import ThemedAlert from '../../components/common/ThemedAlert';
 import { getData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS, ORDER_STATUS } from '../../utils/constants';
 import { MOCK_ORDERS } from '../../services/mockData';
@@ -14,33 +15,17 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 const RequestScreen = ({ navigation, route }) => {
   const [requests, setRequests] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [cancellingOrderId, setCancellingOrderId] = useState(null);
+  const [themedAlert, setThemedAlert] = useState({ visible: false, title: '', message: '', buttons: [] });
   const [user, setUser] = useState({ name: 'Fawad', profilePic: null });
   const flatListRef = useRef(null);
 
-  // Fetch orders on initial load
-  useEffect(() => {
-    fetchRequests();
-    fetchUser();
-    
-    // Scroll to content if navigated from Order Now button
-    if (route?.params?.scrollToContent) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToOffset({ offset: 100, animated: true });
-      }, 300);
-    }
-  }, []);
-
-  // Fetch orders every time screen is focused
-  useFocusEffect(() => {
-    fetchRequests();
-  });
-
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     const userData = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
     if (userData) setUser(userData);
-  };
+  }, []);
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     setRefreshing(true);
     
     // Try to fetch from backend first
@@ -66,6 +51,76 @@ const RequestScreen = ({ navigation, route }) => {
       .slice(0, 20);
     setRequests(combined);
     setRefreshing(false);
+  }, []);
+
+  // Fetch orders on initial load
+  useEffect(() => {
+    fetchRequests();
+    fetchUser();
+    
+    // Scroll to content if navigated from Order Now button
+    if (route?.params?.scrollToContent) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToOffset({ offset: 100, animated: true });
+      }, 300);
+    }
+  }, [fetchRequests, fetchUser, route?.params?.scrollToContent]);
+
+  // Fetch orders every time screen is focused
+  useFocusEffect(useCallback(() => {
+    fetchRequests();
+  }, [fetchRequests]));
+
+  const showThemedAlert = ({ title, message, buttons = [] }) => {
+    setThemedAlert({ visible: true, title, message, buttons });
+  };
+
+  const hideThemedAlert = () => {
+    setThemedAlert({ visible: false, title: '', message: '', buttons: [] });
+  };
+
+  const promptCancelOrder = (order) => {
+    showThemedAlert({
+      title: 'Cancel Order',
+      message: `Are you sure you want to cancel order #${order.orderId?.slice(-6) || order.id?.slice(-6) || 'N/A'}? This can only be cancelled while pending.`,
+      buttons: [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes, Cancel', onPress: () => handleCancelOrder(order) }
+      ]
+    });
+  };
+
+  const handleCancelOrder = async (order) => {
+    if (!order?.id) {
+      showThemedAlert({
+        title: 'Unable to cancel',
+        message: 'Order identifier is missing.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+      return;
+    }
+
+    setCancellingOrderId(order.id);
+    try {
+      const response = await ordersAPI.cancel(order.id);
+      if (response.success) {
+        fetchRequests();
+      } else {
+        showThemedAlert({
+          title: 'Cancel failed',
+          message: response.message || 'Unable to cancel the order. Please try again.',
+          buttons: [{ text: 'OK', style: 'cancel' }]
+        });
+      }
+    } catch (error) {
+      showThemedAlert({
+        title: 'Cancel failed',
+        message: error.message || 'Unable to cancel the order. Please try again.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+    } finally {
+      setCancellingOrderId(null);
+    }
   };
 
   const getStatusColor = (status) => {
@@ -119,6 +174,18 @@ const RequestScreen = ({ navigation, route }) => {
         <Text style={styles.viewDetailsText}>View Details</Text>
         <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
       </View>
+
+      {item.status?.toLowerCase() === 'pending' && (
+        <TouchableOpacity
+          style={[styles.cancelOrderButton, cancellingOrderId === item.id && styles.cancelOrderButtonDisabled]}
+          onPress={() => promptCancelOrder(item)}
+          disabled={cancellingOrderId === item.id}
+        >
+          <Text style={styles.cancelOrderText}>
+            {cancellingOrderId === item.id ? 'Cancelling...' : 'Cancel Order'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </Card>
   );
 
@@ -151,6 +218,13 @@ const RequestScreen = ({ navigation, route }) => {
           }
         />
       </View>
+      <ThemedAlert
+        visible={themedAlert.visible}
+        title={themedAlert.title}
+        message={themedAlert.message}
+        buttons={themedAlert.buttons}
+        onRequestClose={hideThemedAlert}
+      />
     </SafeAreaView>
   );
 };
@@ -224,6 +298,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.primary,
+  },
+  cancelOrderButton: {
+    marginTop: SPACING.sm,
+    backgroundColor: '#F87171',
+    paddingVertical: SPACING.sm,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelOrderButtonDisabled: {
+    opacity: 0.6,
+  },
+  cancelOrderText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '700',
   },
   emptyContainer: {
     flex: 1,

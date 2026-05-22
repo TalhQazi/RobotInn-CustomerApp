@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { notificationsAPI } from '../services/api';
 
 const NotificationUnreadContext = createContext({
@@ -19,6 +19,10 @@ export function NotificationUnreadProvider({ children }) {
       setUnreadCount(0);
     }
   }, []);
+
+  useEffect(() => {
+    refreshUnreadCount();
+  }, [refreshUnreadCount]);
 
   return (
     <NotificationUnreadContext.Provider value={{ unreadCount, refreshUnreadCount }}>

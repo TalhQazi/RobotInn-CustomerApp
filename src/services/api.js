@@ -3,8 +3,8 @@ import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 
 // Use 10.0.2.2 for Android emulator, localhost for iOS simulator
 // For physical device, use your computer's actual IP address (e.g., 192.168.1.x)
-const BASE_URL = 'http://192.168.1.8:5050/api/v1';
-// const BASE_URL = 'https://robot-inn-backend.vercel.app/api/v1';
+// const BASE_URL = 'http://192.168.1.8:5050/api/v1';
+const BASE_URL = 'https://robot-inn-backend.vercel.app/api/v1';
 
 const getAuthHeaders = async () => {
   const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
@@ -70,15 +70,21 @@ export const authAPI = {
     });
     const data = await handleResponse(response);
     if (data.token) {
-      await storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, data.token);
-      await storeData(ASYNC_STORAGE_KEYS.USER_DATA, data.user);
+      // Run both AsyncStorage operations in parallel
+      await Promise.all([
+        storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, data.token),
+        storeData(ASYNC_STORAGE_KEYS.USER_DATA, data.user)
+      ]);
     }
     return data;
   },
 
   logout: async () => {
-    await removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
-    await removeData(ASYNC_STORAGE_KEYS.USER_DATA);
+    // Run both AsyncStorage operations in parallel
+    await Promise.all([
+      removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN),
+      removeData(ASYNC_STORAGE_KEYS.USER_DATA)
+    ]);
   },
 
   getMe: async () => {
@@ -169,12 +175,22 @@ export const notificationsAPI = {
   },
 
   registerToken: async (token, deviceType) => {
-    const response = await fetch(`${BASE_URL}/notifications/token`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ token, deviceType }),
-    });
-    return handleResponse(response);
+    console.log('📡 Registering FCM token with backend...');
+    try {
+      const headers = await getAuthHeaders();
+      console.log('Auth headers:', { ...headers, Authorization: headers.Authorization ? '***' : 'EMPTY' });
+      const response = await fetch(`${BASE_URL}/notifications/token`, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({ token, deviceType }),
+      });
+      const data = await handleResponse(response);
+      console.log('✅ FCM token registered successfully:', data);
+      return data;
+    } catch (error) {
+      console.error('❌ Failed to register FCM token:', error);
+      throw error;
+    }
   },
 };
 
@@ -266,6 +282,69 @@ export const areasAPI = {
   },
 };
 
+// Bills API
+export const billsAPI = {
+  getMyBills: async () => {
+    const response = await fetch(`${BASE_URL}/bills/my-bills`, {
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getBillById: async (billId) => {
+    const response = await fetch(`${BASE_URL}/bills/${billId}`, {
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  uploadPaymentProof: async ({ billId, uri, fileName, type }) => {
+    if (!uri) {
+      throw new Error('No image selected');
+    }
+
+    const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
+    const formData = new FormData();
+    formData.append('billId', billId);
+    formData.append('folder', 'bills');
+    formData.append('file', {
+      uri,
+      name: fileName || `bill-proof-${Date.now()}.jpg`,
+      type: type || 'image/jpeg',
+    });
+
+    const response = await fetch(`${BASE_URL}/upload/image`, {
+      method: 'POST',
+      headers: {
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+      body: formData,
+    });
+
+    return handleResponse(response);
+  },
+
+  submitPaymentProof: async (billId, proofImageUrl) => {
+    const response = await fetch(`${BASE_URL}/bills/${billId}/submit-proof`, {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({
+        paymentProofImage: proofImageUrl,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  updateBillStatus: async (billId, status) => {
+    const response = await fetch(`${BASE_URL}/bills/${billId}/status`, {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse(response);
+  },
+};
+
 // Chat APIs
 export const chatAPI = {
   getConversations: async () => {
@@ -334,5 +413,6 @@ export default {
   notifications: notificationsAPI,
   users: usersAPI,
   areas: areasAPI,
+  bills: billsAPI,
   chat: chatAPI,
 };

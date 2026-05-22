@@ -126,6 +126,7 @@ const DashboardScreen = ({ navigation }) => {
 
   // Store picker modal (for feed-store list per item)
   const [storePicker, setStorePicker] = useState({ visible: false, itemId: null });
+  const [storeSearch, setStoreSearch] = useState('');
 
   // ── Address ───────────────────────────────────────────────────────────────
   const [address,               setAddress]               = useState('');
@@ -323,6 +324,11 @@ const DashboardScreen = ({ navigation }) => {
     return STATIC_AREAS[selectedArea] || [];
   };
 
+  const storeOptions = getStoresForArea();
+  const filteredStoreOptions = storeOptions.filter((store) =>
+    store.toLowerCase().includes(storeSearch.toLowerCase())
+  );
+
   const selectArea = (area) => {
     setSelectedArea(area);
     setShowAreaDropdown(false);
@@ -339,7 +345,8 @@ const DashboardScreen = ({ navigation }) => {
   // ── Order item CRUD ───────────────────────────────────────────────────────
   const addOrderItem = () => {
     if (!currentItem.trim()) return;
-    setOrderItems(prev => [...prev, newOrderItem(currentItem.trim())]);
+    const newItem = newOrderItem(currentItem.trim());
+    setOrderItems(prev => [...prev, newItem]);
     setCurrentItem('');
   };
 
@@ -490,7 +497,10 @@ const DashboardScreen = ({ navigation }) => {
       recentOrders.length - 1)));
 
   // ── Store picker modal (for feed stores) ──────────────────────────────────
-  const openStorePicker = (itemId) => setStorePicker({ visible: true, itemId });
+  const openStorePicker = (itemId) => {
+    setStorePicker({ visible: true, itemId });
+    setStoreSearch('');
+  };
   const closeStorePicker = () => setStorePicker({ visible: false, itemId: null });
 
   const pickFeedStore = (store) => {
@@ -867,6 +877,12 @@ const DashboardScreen = ({ navigation }) => {
                             />
                           )}
 
+                          {!item.storeType && (
+                            <Text style={styles.itemStoreHint}>
+                              Please choose a store for this item before adding to cart.
+                            </Text>
+                          )}
+
                           {/* Chosen store label */}
                           {getItemStoreLabel(item) && item.storeType !== STORE_TYPES.CUSTOM && (
                             <View style={styles.chosenStorePill}>
@@ -1006,27 +1022,7 @@ const DashboardScreen = ({ navigation }) => {
                         <Text style={styles.orderArea}>
                           <Ionicons name="location-outline" size={14} color="#666" />{' '}{order.area}
                         </Text>
-                        <TouchableOpacity
-                          style={styles.reorderButton}
-                          onPress={() => {
-                            if (order.items) {
-                              setOrderItems(
-                                Array.isArray(order.items)
-                                  ? order.items.map(item => newOrderItem(item.name || item.text || JSON.stringify(item)))
-                                  : [newOrderItem(order.items)]
-                              );
-                            }
-                            setSelectedArea(order.area || '');
-                            setAddress(order.dropoff || '');
-                            showThemedAlert({
-                              title: 'Reorder',
-                              message: 'Order details loaded! Review and add to cart.',
-                              buttons: [{ text: 'OK', style: 'cancel' }],
-                            });
-                          }}
-                        >
-                          <Text style={styles.reorderText}>Reorder</Text>
-                        </TouchableOpacity>
+                       
                       </View>
                     </TouchableOpacity>
                   ))}
@@ -1090,8 +1086,20 @@ const DashboardScreen = ({ navigation }) => {
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
             </View>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search-outline" size={20} color="#999" />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search stores..."
+                value={storeSearch}
+                onChangeText={setStoreSearch}
+                placeholderTextColor="#999"
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+            </View>
             <FlatList
-              data={getStoresForArea()}
+              data={filteredStoreOptions}
               keyExtractor={item => item}
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.modalItem} onPress={() => pickFeedStore(item)}>
@@ -1101,7 +1109,7 @@ const DashboardScreen = ({ navigation }) => {
               )}
               ListEmptyComponent={
                 <Text style={styles.emptyModalText}>
-                  No stores available for {selectedArea}
+                  No stores found for "{storeSearch}" in {selectedArea}
                 </Text>
               }
             />
@@ -1311,6 +1319,7 @@ const styles = StyleSheet.create({
   // ─── RECENT ORDERS ────────────────────────────────────────────────────────
   recentOrdersSection: { marginTop: SPACING.lg, paddingBottom: SPACING.xl + 110 , marginBottom: SPACING.sm},
   viewAllText: { fontSize: 14, color: '#2EC4B6', fontWeight: '600' },
+  itemStoreHint: { marginTop: SPACING.sm, color: '#D97706', fontSize: 12, fontWeight: '600' },
   emptyOrdersContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.xl, backgroundColor: '#fff', borderRadius: 16 },
   emptyOrdersText: { fontSize: 18, fontWeight: '600', color: '#333', marginTop: SPACING.md },
   emptyOrdersSubtext: { fontSize: 14, color: '#666', marginTop: SPACING.xs },
