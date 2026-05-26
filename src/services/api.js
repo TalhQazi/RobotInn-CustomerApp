@@ -135,6 +135,18 @@ export const ordersAPI = {
     };
     
     const docRef = await firestore().collection('orders').add(newOrder);
+
+    // Create an admin notification for the new order
+    await firestore().collection('notifications').add({
+      recipient: 'admin',
+      title: 'New Order Placed',
+      message: `Order ${orderId} has been placed by ${newOrder.customer.name || 'Customer'}.`,
+      type: 'order',
+      read: false,
+      createdAt: new Date().toISOString(),
+      data: { orderId: docRef.id }
+    });
+
     return { success: true, data: { id: docRef.id, ...newOrder } };
   },
 
