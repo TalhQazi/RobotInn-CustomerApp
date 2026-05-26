@@ -1,86 +1,85 @@
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import storage from '@react-native-firebase/storage';
 import { getData, storeData, removeData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 
-// Use 10.0.2.2 for Android emulator, localhost for iOS simulator
-// For physical device, use your computer's actual IP address (e.g., 192.168.1.x)
-// const BASE_URL = 'http://192.168.1.8:5050/api/v1';
-const BASE_URL = 'https://robot-inn-backend.vercel.app/api/v1';
-
-const getAuthHeaders = async () => {
-  const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': token ? `Bearer ${token}` : '',
-  };
-};
-
-const handleResponse = async (response) => {
-  const text = await response.text();
-  let data = null;
-
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      if (!response.ok) {
-        throw new Error(text || 'Request failed');
-      }
-      throw new Error('Invalid server response');
-    }
-  }
-
-  if (!response.ok) {
-    const validationMessage = Array.isArray(data?.errors)
-      ? data.errors.map((err) => err.message).join(', ')
-      : null;
-    throw new Error(data?.message || validationMessage || 'Something went wrong');
-  }
-
-  return data;
-};
-
-const buildUploadFileName = (name, type) => {
-  if (name) {
-    return name;
-  }
-  const extension = type?.includes('png')
-    ? 'png'
-    : type?.includes('webp')
-      ? 'webp'
-      : 'jpg';
-  return `profile-${Date.now()}.${extension}`;
-};
+// Native Firebase replacement for the Express/Node REST backend
+// Mimics existing API interface so no UI screens break!
 
 // Auth APIs
 export const authAPI = {
   register: async (userData) => {
-    const response = await fetch(`${BASE_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData),
-    });
-    return handleResponse(response);
+    const { email, password, name, phone } = userData;
+    const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+    const firebaseUser = userCredential.user;
+    
+    const profile = { 
+      id: firebaseUser.uid,
+      uid: firebaseUser.uid, 
+      email, 
+      name: name || 'User', 
+      phone: phone || '', 
+      type: 'customer', 
+      addresses: [],
+      createdAt: new Date().toISOString() 
+    };
+    
+    await firestore().collection('users').doc(firebaseUser.uid).set(profile);
+    
+    // Store local sessions in AsyncStorage
+    await Promise.all([
+      storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
+      storeData(ASYNC_STORAGE_KEYS.USER_DATA, profile)
+    ]);
+    
+    return { success: true, user: profile, token: firebaseUser.uid };
   },
 
   login: async (email, password) => {
-    const response = await fetch(`${BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, app: 'customer' }),
-    });
-    const data = await handleResponse(response);
-    if (data.token) {
-      // Run both AsyncStorage operations in parallel
+    const userCredential = await auth().signInWithEmailAndPassword(email, password);
+    const firebaseUser = userCredential.user;
+    
+    // Fetch profile details
+    const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+    
+    if (!userSnap.exists) {
+      // Create a default profile if not exists
+      const defaultProfile = {
+        id: firebaseUser.uid,
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || email,
+        name: 'Customer',
+        phone: '',
+        type: 'customer',
+        addresses: [],
+        createdAt: new Date().toISOString()
+      };
+      await firestore().collection('users').doc(firebaseUser.uid).set(defaultProfile);
+      
       await Promise.all([
-        storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, data.token),
-        storeData(ASYNC_STORAGE_KEYS.USER_DATA, data.user)
+        storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
+        storeData(ASYNC_STORAGE_KEYS.USER_DATA, defaultProfile)
       ]);
+      return { success: true, token: firebaseUser.uid, user: defaultProfile };
     }
-    return data;
+
+    const profile = userSnap.data();
+    if (profile?.type !== 'customer') {
+      await auth().signOut();
+      throw new Error('Access Denied: Only customers can log into this app.');
+    }
+    
+    await Promise.all([
+      storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
+      storeData(ASYNC_STORAGE_KEYS.USER_DATA, profile)
+    ]);
+    
+    return { success: true, token: firebaseUser.uid, user: profile };
   },
 
   logout: async () => {
-    // Run both AsyncStorage operations in parallel
+    await auth().signOut();
     await Promise.all([
       removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN),
       removeData(ASYNC_STORAGE_KEYS.USER_DATA)
@@ -88,312 +87,411 @@ export const authAPI = {
   },
 
   getMe: async () => {
-    const response = await fetch(`${BASE_URL}/auth/me`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Not logged in');
+    
+    const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+    return { success: true, user: userSnap.data() };
   },
 };
 
 // Products APIs
 export const productsAPI = {
   getAll: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
-    const response = await fetch(`${BASE_URL}/products?${queryString}`, {
-      headers: await getAuthHeaders(),
+    const productsSnap = await firestore().collection('products').get();
+    const data = [];
+    productsSnap.forEach(doc => {
+      data.push({ id: doc.id, ...doc.data() });
     });
-    return handleResponse(response);
+    return { success: true, data };
   },
 
   getById: async (id) => {
-    const response = await fetch(`${BASE_URL}/products/${id}`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const productSnap = await firestore().collection('products').doc(id).get();
+    if (!productSnap.exists) throw new Error('Product not found');
+    return { success: true, data: { id: productSnap.id, ...productSnap.data() } };
   },
 };
 
 // Orders APIs
 export const ordersAPI = {
   create: async (orderData) => {
-    const response = await fetch(`${BASE_URL}/orders`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify(orderData),
-    });
-    return handleResponse(response);
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const orderId = `ORD-${Date.now().toString().slice(-6)}`;
+    const newOrder = {
+      ...orderData,
+      orderId,
+      status: 'pending',
+      customer: {
+        id: firebaseUser.uid,
+        name: orderData.customerName || 'Customer',
+        phone: orderData.customerPhone || ''
+      },
+      rider: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    const docRef = await firestore().collection('orders').add(newOrder);
+    return { success: true, data: { id: docRef.id, ...newOrder } };
   },
 
   getMyOrders: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
-    const response = await fetch(`${BASE_URL}/orders/my-orders?${queryString}`, {
-      headers: await getAuthHeaders(),
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const ordersSnap = await firestore()
+      .collection('orders')
+      .where('customer.id', '==', firebaseUser.uid)
+      .get();
+      
+    const data = [];
+    ordersSnap.forEach(doc => {
+      data.push({ id: doc.id, ...doc.data() });
     });
-    return handleResponse(response);
+    
+    // Sort by date newest first
+    data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return { success: true, data };
   },
 
   getById: async (id) => {
-    const response = await fetch(`${BASE_URL}/orders/${id}`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const orderSnap = await firestore().collection('orders').doc(id).get();
+    if (!orderSnap.exists) throw new Error('Order not found');
+    return { success: true, data: { id: orderSnap.id, ...orderSnap.data() } };
   },
 
   cancel: async (id) => {
-    const response = await fetch(`${BASE_URL}/orders/${id}/cancel`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
+    await firestore().collection('orders').doc(id).update({
+      status: 'cancelled',
+      updatedAt: new Date().toISOString()
     });
-    return handleResponse(response);
+    return { success: true };
   },
 };
 
 // Notifications APIs
 export const notificationsAPI = {
   getAll: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
-    const response = await fetch(`${BASE_URL}/notifications?${queryString}`, {
-      headers: await getAuthHeaders(),
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const snap = await firestore()
+      .collection('notifications')
+      .where('userId', '==', firebaseUser.uid)
+      .get();
+      
+    const data = [];
+    snap.forEach(doc => {
+      data.push({ id: doc.id, ...doc.data() });
     });
-    return handleResponse(response);
+    return { success: true, data };
   },
 
   markAsRead: async (id) => {
-    const response = await fetch(`${BASE_URL}/notifications/${id}/read`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    await firestore().collection('notifications').doc(id).update({ read: true });
+    return { success: true };
   },
 
   markAllAsRead: async () => {
-    const response = await fetch(`${BASE_URL}/notifications/read-all`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const snap = await firestore()
+      .collection('notifications')
+      .where('userId', '==', firebaseUser.uid)
+      .get();
+      
+    const batch = firestore().batch();
+    snap.forEach(doc => {
+      batch.update(doc.ref, { read: true });
     });
-    return handleResponse(response);
+    await batch.commit();
+    return { success: true };
   },
 
   registerToken: async (token, deviceType) => {
-    console.log('📡 Registering FCM token with backend...');
-    try {
-      const headers = await getAuthHeaders();
-      console.log('Auth headers:', { ...headers, Authorization: headers.Authorization ? '***' : 'EMPTY' });
-      const response = await fetch(`${BASE_URL}/notifications/token`, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify({ token, deviceType }),
+    const firebaseUser = auth().currentUser;
+    if (firebaseUser) {
+      await firestore().collection('users').doc(firebaseUser.uid).update({
+        fcmToken: token,
+        deviceType: deviceType || 'android'
       });
-      const data = await handleResponse(response);
-      console.log('✅ FCM token registered successfully:', data);
-      return data;
-    } catch (error) {
-      console.error('❌ Failed to register FCM token:', error);
-      throw error;
     }
+    return { success: true };
   },
 };
 
 // Users APIs
 export const usersAPI = {
   getProfile: async () => {
-    const response = await fetch(`${BASE_URL}/users/profile`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const docSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+    return { success: true, data: docSnap.data() };
   },
 
   updateProfile: async (userData) => {
-    const response = await fetch(`${BASE_URL}/users/profile`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify(userData),
-    });
-    return handleResponse(response);
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    await firestore().collection('users').doc(firebaseUser.uid).update(userData);
+    const updatedSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+    return { success: true, data: updatedSnap.data() };
   },
 
   getAddresses: async () => {
-    const response = await fetch(`${BASE_URL}/users/addresses`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const docSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+    return { success: true, data: docSnap.data()?.addresses || [] };
   },
 
   addAddress: async (addressData) => {
-    const response = await fetch(`${BASE_URL}/users/addresses`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify(addressData),
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const addressId = `ADR-${Date.now()}`;
+    const newAddress = { id: addressId, ...addressData };
+    
+    await firestore().collection('users').doc(firebaseUser.uid).update({
+      addresses: firestore.FieldValue.arrayUnion(newAddress)
     });
-    return handleResponse(response);
+    return { success: true, data: newAddress };
   },
 
   updateAddress: async (id, addressData) => {
-    const response = await fetch(`${BASE_URL}/users/addresses/${id}`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify(addressData),
-    });
-    return handleResponse(response);
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const userRef = firestore().collection('users').doc(firebaseUser.uid);
+    const userDoc = await userRef.get();
+    const addresses = userDoc.data()?.addresses || [];
+    const updated = addresses.map(addr => addr.id === id ? { ...addr, ...addressData } : addr);
+    
+    await userRef.update({ addresses: updated });
+    return { success: true };
   },
 
   deleteAddress: async (id) => {
-    const response = await fetch(`${BASE_URL}/users/addresses/${id}`, {
-      method: 'DELETE',
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const userRef = firestore().collection('users').doc(firebaseUser.uid);
+    const userDoc = await userRef.get();
+    const addresses = userDoc.data()?.addresses || [];
+    const updated = addresses.filter(addr => addr.id !== id);
+    
+    await userRef.update({ addresses: updated });
+    return { success: true };
   },
 };
 
 // Upload APIs
 export const uploadAPI = {
   uploadImage: async ({ uri, name, type }) => {
-    if (!uri) {
-      throw new Error('No image selected');
-    }
-
-    const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
-    const formData = new FormData();
-    formData.append('folder', 'profiles');
-    formData.append('file', {
-      uri,
-      name: buildUploadFileName(name, type),
-      type: type || 'image/jpeg',
-    });
-
-    const response = await fetch(`${BASE_URL}/upload/image`, {
-      method: 'POST',
-      headers: {
-        Authorization: token ? `Bearer ${token}` : '',
-      },
-      body: formData,
-    });
-
-    return handleResponse(response);
+    if (!uri) throw new Error('No image selected');
+    
+    const firebaseUser = auth().currentUser;
+    const uid = firebaseUser ? firebaseUser.uid : 'anon';
+    const fileName = name || `profile-${uid}-${Date.now()}.jpg`;
+    
+    const ref = storage().ref().child(`profiles/${fileName}`);
+    await ref.putFile(uri);
+    
+    const downloadURL = await ref.getDownloadURL();
+    return { success: true, data: { url: downloadURL } };
   },
 };
 
 // Areas API
 export const areasAPI = {
   getAll: async () => {
-    const response = await fetch(`${BASE_URL}/areas`);
-    return handleResponse(response);
+    const snap = await firestore().collection('areas').get();
+    const data = [];
+    snap.forEach(doc => {
+      data.push({ id: doc.id, ...doc.data() });
+    });
+    return { success: true, data };
   },
 };
 
 // Bills API
 export const billsAPI = {
   getMyBills: async () => {
-    const response = await fetch(`${BASE_URL}/bills/my-bills`, {
-      headers: await getAuthHeaders(),
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const ordersSnap = await firestore()
+      .collection('orders')
+      .where('customer.id', '==', firebaseUser.uid)
+      .get();
+      
+    const bills = [];
+    ordersSnap.forEach(doc => {
+      const order = doc.data();
+      if (order.bill) {
+        bills.push({ id: doc.id, orderId: order.orderId, ...order.bill });
+      }
     });
-    return handleResponse(response);
+    return { success: true, data: bills };
   },
 
   getBillById: async (billId) => {
-    const response = await fetch(`${BASE_URL}/bills/${billId}`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const orderSnap = await firestore().collection('orders').doc(billId).get();
+    if (!orderSnap.exists) throw new Error('Bill not found');
+    const order = orderSnap.data();
+    return { success: true, data: { id: orderSnap.id, orderId: order.orderId, ...order.bill } };
   },
 
   uploadPaymentProof: async ({ billId, uri, fileName, type }) => {
-    if (!uri) {
-      throw new Error('No image selected');
-    }
-
-    const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
-    const formData = new FormData();
-    formData.append('billId', billId);
-    formData.append('folder', 'bills');
-    formData.append('file', {
-      uri,
-      name: fileName || `bill-proof-${Date.now()}.jpg`,
-      type: type || 'image/jpeg',
-    });
-
-    const response = await fetch(`${BASE_URL}/upload/image`, {
-      method: 'POST',
-      headers: {
-        Authorization: token ? `Bearer ${token}` : '',
-      },
-      body: formData,
-    });
-
-    return handleResponse(response);
+    if (!uri) throw new Error('No image selected');
+    
+    const name = fileName || `bill-proof-${billId}-${Date.now()}.jpg`;
+    const ref = storage().ref().child(`bills/${name}`);
+    await ref.putFile(uri);
+    
+    const downloadURL = await ref.getDownloadURL();
+    return { success: true, data: { url: downloadURL } };
   },
 
   submitPaymentProof: async (billId, proofImageUrl) => {
-    const response = await fetch(`${BASE_URL}/bills/${billId}/submit-proof`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({
-        paymentProofImage: proofImageUrl,
-      }),
+    await firestore().collection('orders').doc(billId).update({
+      'bill.paymentProofImage': proofImageUrl,
+      'bill.status': 'submitted',
+      'bill.submittedAt': new Date().toISOString()
     });
-    return handleResponse(response);
+    return { success: true };
   },
 
   updateBillStatus: async (billId, status) => {
-    const response = await fetch(`${BASE_URL}/bills/${billId}/status`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ status }),
+    await firestore().collection('orders').doc(billId).update({
+      'bill.status': status
     });
-    return handleResponse(response);
+    return { success: true };
   },
 };
 
 // Chat APIs
 export const chatAPI = {
   getConversations: async () => {
-    const response = await fetch(`${BASE_URL}/chat/conversations`, {
-      headers: await getAuthHeaders(),
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const snap = await firestore()
+      .collection('conversations')
+      .where('participants', 'array-contains', firebaseUser.uid)
+      .get();
+      
+    const data = [];
+    snap.forEach(doc => {
+      data.push({ id: doc.id, ...doc.data() });
     });
-    return handleResponse(response);
+    return { success: true, data };
   },
 
   startConversation: async (participantId, orderId) => {
-    const response = await fetch(`${BASE_URL}/chat/conversations`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({
-        participantId,
-        ...(orderId ? { orderId } : {}),
-      }),
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    // Find if a conversation already exists between these participants
+    const existingSnap = await firestore()
+      .collection('conversations')
+      .where('participants', 'array-contains', firebaseUser.uid)
+      .get();
+      
+    let conversation = null;
+    existingSnap.forEach(doc => {
+      const data = doc.data();
+      if (data.participants.includes(participantId)) {
+        conversation = { id: doc.id, ...data };
+      }
     });
-    return handleResponse(response);
+
+    if (conversation) {
+      return { success: true, data: conversation };
+    }
+
+    const newConv = {
+      participants: [firebaseUser.uid, participantId],
+      orderId: orderId || null,
+      createdAt: new Date().toISOString(),
+      lastMessage: null
+    };
+    
+    const docRef = await firestore().collection('conversations').add(newConv);
+    return { success: true, data: { id: docRef.id, ...newConv } };
   },
 
   getMessages: async (conversationId, params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
-    const response = await fetch(
-      `${BASE_URL}/chat/conversations/${conversationId}/messages?${queryString}`,
-      { headers: await getAuthHeaders() }
-    );
-    return handleResponse(response);
+    const snap = await firestore()
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .get();
+      
+    const data = [];
+    snap.forEach(doc => {
+      data.push({ id: doc.id, ...doc.data() });
+    });
+    return { success: true, data };
   },
 
   sendMessage: async (conversationId, text) => {
-    const response = await fetch(`${BASE_URL}/chat/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ text }),
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const newMessage = {
+      senderId: firebaseUser.uid,
+      text,
+      createdAt: new Date().toISOString()
+    };
+    
+    const docRef = await firestore()
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('messages')
+      .add(newMessage);
+
+    await firestore().collection('conversations').doc(conversationId).update({
+      lastMessage: {
+        text,
+        senderId: firebaseUser.uid,
+        createdAt: new Date().toISOString()
+      }
     });
-    return handleResponse(response);
+
+    return { success: true, data: { id: docRef.id, ...newMessage } };
   },
 
   markRead: async (conversationId) => {
-    const response = await fetch(`${BASE_URL}/chat/conversations/${conversationId}/read`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    return { success: true };
+  },
+
+  subscribeMessages: (conversationId, callback) => {
+    return firestore()
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .onSnapshot(snap => {
+        if (!snap) return;
+        const messages = [];
+        snap.forEach(doc => {
+          messages.push({ id: doc.id, ...doc.data() });
+        });
+        callback(messages);
+      }, err => {
+        console.error('Error listening to messages:', err);
+      });
   },
 };
 
-/** Start or reuse chat with assigned rider (from order details). */
 export async function openRiderChat({ riderId, orderCode, autoMessage }) {
   const res = await chatAPI.startConversation(riderId, orderCode);
   const conversationId = res.data?.id;

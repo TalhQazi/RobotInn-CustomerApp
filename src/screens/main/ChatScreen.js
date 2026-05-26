@@ -120,11 +120,33 @@ const ChatScreen = ({ navigation, route }) => {
     };
   }, [initialConversationId, participantId, orderCode]);
 
+  // Subscribe to real-time messages via Firestore listener
   useEffect(() => {
     if (!conversationId) return;
-    const interval = setInterval(() => loadMessages(conversationId, true), 4000);
-    return () => clearInterval(interval);
-  }, [conversationId, loadMessages]);
+
+    const unsubscribe = chatAPI.subscribeMessages(conversationId, async (data) => {
+      const userData = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
+      const uid = myUserId || String(userData?._id || userData?.id || '');
+      setMessages(
+        data.map((m) => ({
+          id: String(m.id),
+          text: m.text,
+          sender: uid && String(m.senderId) === String(uid) ? 'me' : 'them',
+          time: m.time || formatMsgTime(m.createdAt),
+          status: m.read ? 'read' : 'delivered',
+        }))
+      );
+      setLoading(false);
+
+      try {
+        await chatAPI.markRead(conversationId);
+      } catch (e) {
+        console.log('Error marking messages as read:', e);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [conversationId, myUserId]);
 
   useEffect(() => {
     if (flatListRef.current && messages.length > 0) {
@@ -242,8 +264,8 @@ const ChatScreen = ({ navigation, route }) => {
       {/* Messages + input */}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <View style={styles.chatBody}>
           {loading ? (

@@ -1,130 +1,94 @@
-import { io } from 'socket.io-client';
-import { getData } from '../storage/asyncStorage';
-import { ASYNC_STORAGE_KEYS, SOCKET_URL } from '../utils/constants';
+import firestore from '@react-native-firebase/firestore';
 
-let socket = null;
+// Drop-in replacement for Socket.io that uses Firestore real-time listeners!
+// Keeps the identical API signatures so no screens or map UI breaks.
 
-function waitForConnection(activeSocket) {
-  if (activeSocket.connected) {
-    return Promise.resolve(activeSocket);
-  }
-
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      activeSocket.off('connect', onConnect);
-      activeSocket.off('connect_error', onError);
-      reject(new Error('Socket connection timeout'));
-    }, 10000);
-
-    const onConnect = () => {
-      clearTimeout(timeout);
-      activeSocket.off('connect_error', onError);
-      resolve(activeSocket);
-    };
-
-    const onError = (error) => {
-      clearTimeout(timeout);
-      activeSocket.off('connect', onConnect);
-      reject(error);
-    };
-
-    activeSocket.once('connect', onConnect);
-    activeSocket.once('connect_error', onError);
-  });
-}
+let activeOrderUnsubscribe = null;
+let riderLocationCallback = null;
+let orderUpdatedCallback = null;
 
 export async function connectSocket() {
-  if (socket?.connected) {
-    return socket;
-  }
-
-  const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
-  if (!token) {
-    return null;
-  }
-
-  if (socket) {
-    socket.auth = { token };
-    if (!socket.connected) {
-      socket.connect();
-    }
-    try {
-      await waitForConnection(socket);
-    } catch (error) {
-      console.error('Socket reconnect error:', error);
-      return null;
-    }
-    return socket;
-  }
-
-  socket = io(SOCKET_URL, {
-    auth: { token },
-    transports: ['websocket'],
-    reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 2000,
-    autoConnect: true,
-  });
-
-  try {
-    await waitForConnection(socket);
-  } catch (error) {
-    console.error('Socket connect error:', error);
-    return null;
-  }
-
-  return socket;
+  // Stub - no-op for Firestore
+  return { connected: true };
 }
 
 export function getSocket() {
-  return socket;
+  return { connected: true };
 }
 
 export async function joinOrderRoom(orderId) {
-  if (!orderId) {
-    return;
+  if (!orderId) return;
+
+  // Clean up any existing active listener
+  if (activeOrderUnsubscribe) {
+    activeOrderUnsubscribe();
+    activeOrderUnsubscribe = null;
   }
 
-  const activeSocket = await connectSocket();
-  if (!activeSocket) {
-    return;
-  }
+  console.log(`📡 Joining real-time Firestore room for Order: ${orderId}`);
 
-  activeSocket.emit('join_order', String(orderId));
+  // Subscribe to real-time updates of the order document in Firestore
+  activeOrderUnsubscribe = firestore()
+    .collection('orders')
+    .doc(String(orderId))
+    .onSnapshot(
+      (documentSnapshot) => {
+        if (!documentSnapshot || !documentSnapshot.exists) {
+          console.log(`⚠️ Order ${orderId} does not exist in Firestore yet.`);
+          return;
+        }
+
+        const data = documentSnapshot.data();
+        const orderData = { id: documentSnapshot.id, ...data };
+
+        // 1. Trigger Order Updated Callback
+        if (orderUpdatedCallback) {
+          orderUpdatedCallback(orderData);
+        }
+
+        // 2. Trigger Rider Location Updated Callback
+        if (data?.riderLocation && riderLocationCallback) {
+          const lat = data.riderLocation.latitude;
+          const lng = data.riderLocation.longitude;
+          
+          riderLocationCallback({
+            orderId,
+            latitude: lat,
+            longitude: lng,
+            lat: lat, // Provide fallback for both lat/longitude naming conventions
+            lng: lng,
+            coords: { latitude: lat, longitude: lng }
+          });
+        }
+      },
+      (error) => {
+        console.error(`❌ Firestore real-time track error for order ${orderId}:`, error);
+      }
+    );
 }
 
 export function leaveOrderRoom() {
-  if (!socket) {
-    return;
+  console.log('📡 Leaving real-time Firestore order room.');
+  if (activeOrderUnsubscribe) {
+    activeOrderUnsubscribe();
+    activeOrderUnsubscribe = null;
   }
-  socket.off('rider_location_updated');
-  socket.off('order_updated');
 }
 
 export function disconnectSocket() {
-  if (!socket) {
-    return;
-  }
-  socket.disconnect();
-  socket = null;
+  leaveOrderRoom();
 }
 
 export function onRiderLocationUpdated(callback) {
-  if (!socket) {
-    return () => {};
-  }
-
-  const handler = (payload) => callback(payload);
-  socket.on('rider_location_updated', handler);
-  return () => socket.off('rider_location_updated', handler);
+  riderLocationCallback = callback;
+  return () => {
+    riderLocationCallback = null;
+  };
 }
 
 export function onOrderUpdated(callback) {
-  if (!socket) {
-    return () => {};
-  }
-
-  const handler = (payload) => callback(payload);
-  socket.on('order_updated', handler);
-  return () => socket.off('order_updated', handler);
+  orderUpdatedCallback = callback;
+  return () => {
+    orderUpdatedCallback = null;
+  };
 }

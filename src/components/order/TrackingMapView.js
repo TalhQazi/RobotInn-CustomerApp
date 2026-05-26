@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { StyleSheet, Platform, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import { getMapRegion } from '../../utils/maps';
+import { getMapRegion, DEFAULT_MAP_REGION } from '../../utils/maps';
 
 const MAP_HEIGHT = 280;
 
@@ -16,7 +16,7 @@ const TrackingMapView = ({
   const mapRef = useRef(null);
 
   const region = useMemo(
-    () => getMapRegion(riderCoords, destinationCoords, showDefaultRegion),
+    () => getMapRegion(riderCoords, destinationCoords, showDefaultRegion) || DEFAULT_MAP_REGION,
     [riderCoords, destinationCoords, showDefaultRegion]
   );
 
@@ -37,10 +37,6 @@ const TrackingMapView = ({
 
     mapRef.current.animateToRegion(region, 450);
   }, [region]);
-
-  if (!region) {
-    return null;
-  }
 
   const mapStyle = preview
     ? [styles.previewMap, style]
