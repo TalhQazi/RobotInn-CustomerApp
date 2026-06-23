@@ -400,9 +400,74 @@ export const chatAPI = {
       .get();
       
     const data = [];
-    snap.forEach(doc => {
-      data.push({ id: doc.id, ...doc.data() });
-    });
+    const activeParticipantIds = new Set();
+
+    for (const doc of snap.docs) {
+      const convData = doc.data();
+      const participants = convData.participants || [];
+      const participantId = participants.find(p => p !== firebaseUser.uid);
+      if (participantId) {
+        activeParticipantIds.add(participantId);
+      }
+      
+      let participantName = 'Rider';
+      let participantType = 'rider';
+      if (participantId) {
+        const userSnap = await firestore().collection('users').doc(participantId).get();
+        if (userSnap.exists) {
+          const userData = userSnap.data();
+          participantName = userData?.name || 'Rider';
+          participantType = userData?.type || 'rider';
+        }
+      }
+
+      data.push({
+        id: doc.id,
+        ...convData,
+        participantId,
+        participantName,
+        participantType,
+        lastMessageTime: convData.lastMessage?.createdAt || null,
+        lastMessage: convData.lastMessage?.text || ''
+      });
+    }
+
+    try {
+      const activeOrdersSnap = await firestore()
+        .collection('orders')
+        .where('customer.id', '==', firebaseUser.uid)
+        .where('status', 'in', ['accepted', 'processing', 'picked', 'picked up', 'in progress'])
+        .get();
+
+      for (const orderDoc of activeOrdersSnap.docs) {
+        const orderData = orderDoc.data();
+        const riderId = orderData.rider?.id || orderData.riderId;
+        if (riderId && !activeParticipantIds.has(riderId)) {
+          const riderName = orderData.rider?.name || orderData.riderName || 'Rider';
+          const newConv = {
+            participants: [firebaseUser.uid, riderId],
+            orderId: orderData.orderId || null,
+            createdAt: new Date().toISOString(),
+            lastMessage: null
+          };
+          const docRef = await firestore().collection('conversations').add(newConv);
+          
+          data.push({
+            id: docRef.id,
+            ...newConv,
+            participantId: riderId,
+            participantName: riderName,
+            participantType: 'rider',
+            lastMessageTime: null,
+            lastMessage: ''
+          });
+          activeParticipantIds.add(riderId);
+        }
+      }
+    } catch (err) {
+      console.error('Error auto-creating conversations for active orders:', err);
+    }
+
     return { success: true, data };
   },
 
@@ -477,6 +542,31 @@ export const chatAPI = {
         createdAt: new Date().toISOString()
       }
     });
+
+    try {
+      const convDoc = await firestore().collection('conversations').doc(conversationId).get();
+      if (convDoc.exists) {
+        const convData = convDoc.data();
+        const participants = convData?.participants || [];
+        const recipientId = participants.find(p => p !== firebaseUser.uid);
+        if (recipientId) {
+          const senderDoc = await firestore().collection('users').doc(firebaseUser.uid).get();
+          const senderName = senderDoc.exists ? (senderDoc.data()?.name || 'User') : 'User';
+
+          await firestore().collection('notifications').add({
+            userId: recipientId,
+            title: `New message from ${senderName}`,
+            message: text,
+            type: 'chat',
+            read: false,
+            createdAt: new Date().toISOString(),
+            data: { conversationId, senderId: firebaseUser.uid }
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error writing chat notification to Firestore:', err);
+    }
 
     return { success: true, data: { id: docRef.id, ...newMessage } };
   },

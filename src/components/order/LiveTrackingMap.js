@@ -30,8 +30,8 @@ const LiveTrackingMap = ({
 
   const hasCoords = !!(riderCoords || destinationCoords);
   const showDefaultMap = isTracking && !hasCoords;
-  const canShowMap = hasCoords || showDefaultMap;
-  const canOpenMap = canShowMap;
+  const canShowMap = true;
+  const canOpenMap = hasCoords;
 
   const mapUrl = useMemo(() => {
     if (!hasCoords) {
@@ -118,10 +118,12 @@ const LiveTrackingMap = ({
               showDefaultRegion={showDefaultMap}
             />
           )}
-          <View style={styles.openMapHint}>
-            <Ionicons name="expand-outline" size={16} color="#fff" />
-            <Text style={styles.openMapHintText}>Tap to open live map</Text>
-          </View>
+          {canOpenMap && (
+            <View style={styles.openMapHint}>
+              <Ionicons name="expand-outline" size={16} color="#fff" />
+              <Text style={styles.openMapHintText}>Tap to open live map</Text>
+            </View>
+          )}
         </>
       );
     }

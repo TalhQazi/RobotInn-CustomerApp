@@ -90,6 +90,7 @@ const CartScreen = ({ navigation }) => {
           dropoff: order.address || order.area || 'N/A',
           area: order.area || 'N/A',
           notes: order.notes || '',
+          location: order.location || null,
         };
 
         try {

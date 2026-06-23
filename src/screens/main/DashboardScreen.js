@@ -77,6 +77,7 @@ const newOrderItem = (text = '') => ({
   storeType: null,       // STORE_TYPES.FEED | CUSTOM | ROBOT | null
   selectedStore: '',     // name of the chosen feed-store
   customStore: '',       // typed custom store
+  customStoreConfirmed: false,
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -378,7 +379,7 @@ const DashboardScreen = ({ navigation }) => {
   // ── Per-item store helpers ────────────────────────────────────────────────
   const setItemStoreType = (id, type) =>
     setOrderItems(prev => prev.map(i => i.id === id
-      ? { ...i, storeType: type, selectedStore: '', customStore: '' }
+      ? { ...i, storeType: type, selectedStore: '', customStore: '', customStoreConfirmed: false }
       : i));
 
   const setItemSelectedStore = (id, store) =>
@@ -386,6 +387,9 @@ const DashboardScreen = ({ navigation }) => {
 
   const setItemCustomStore = (id, text) =>
     setOrderItems(prev => prev.map(i => i.id === id ? { ...i, customStore: text } : i));
+
+  const setItemCustomStoreConfirmed = (id, confirmed) =>
+    setOrderItems(prev => prev.map(i => i.id === id ? { ...i, customStoreConfirmed: confirmed } : i));
 
   const getItemStoreLabel = (item) => {
     if (!item.storeType) return null;
@@ -413,17 +417,25 @@ const DashboardScreen = ({ navigation }) => {
 
   // ── Validate & add to cart ────────────────────────────────────────────────
   const validateAndAddToCart = async () => {
+    let itemsToValidate = [...orderItems];
+    if (currentItem.trim()) {
+      const newItem = newOrderItem(currentItem.trim());
+      itemsToValidate.push(newItem);
+      setOrderItems(itemsToValidate);
+      setCurrentItem('');
+    }
+
     if (!selectedArea) {
       showThemedAlert({ title: 'Error', message: 'Please select your area first' });
       return;
     }
-    if (orderItems.length === 0) {
+    if (itemsToValidate.length === 0) {
       showThemedAlert({ title: 'Error', message: 'Please add at least one item' });
       return;
     }
 
     // Validate each item's store
-    for (const item of orderItems) {
+    for (const item of itemsToValidate) {
       if (!item.storeType) {
         showThemedAlert({ title: 'Error', message: `Please choose a store for "${item.text}"` });
         return;
@@ -445,7 +457,7 @@ const DashboardScreen = ({ navigation }) => {
 
     const orderData = {
       id: Date.now().toString(),
-      items: orderItems.map(item => ({
+      items: itemsToValidate.map(item => ({
         id: item.id,
         text: item.text,
         store: item.storeType === STORE_TYPES.ROBOT  ? 'Robot Store'
@@ -867,14 +879,36 @@ const DashboardScreen = ({ navigation }) => {
                           </View>
 
                           {/* Custom store input */}
-                          {item.storeType === STORE_TYPES.CUSTOM && (
-                            <TextInput
-                              style={styles.customStoreInput}
-                              placeholder="Enter store name..."
-                              value={item.customStore}
-                              onChangeText={text => setItemCustomStore(item.id, text)}
-                              placeholderTextColor="#999"
-                            />
+                          {item.storeType === STORE_TYPES.CUSTOM && !item.customStoreConfirmed && (
+                            <View style={styles.customStoreInputRow}>
+                              <TextInput
+                                style={styles.customStoreInput}
+                                placeholder="Enter store name..."
+                                value={item.customStore}
+                                onChangeText={text => setItemCustomStore(item.id, text)}
+                                onSubmitEditing={() => {
+                                  if (item.customStore.trim()) {
+                                    setItemCustomStoreConfirmed(item.id, true);
+                                  }
+                                }}
+                                returnKeyType="done"
+                                placeholderTextColor="#999"
+                              />
+                              <TouchableOpacity
+                                style={[
+                                  styles.customStoreEnterBtn,
+                                  !item.customStore.trim() && styles.customStoreEnterBtnDisabled
+                                ]}
+                                onPress={() => {
+                                  if (item.customStore.trim()) {
+                                    setItemCustomStoreConfirmed(item.id, true);
+                                  }
+                                }}
+                                disabled={!item.customStore.trim()}
+                              >
+                                <Text style={styles.customStoreEnterBtnText}>Enter</Text>
+                              </TouchableOpacity>
+                            </View>
                           )}
 
                           {!item.storeType && (
@@ -884,10 +918,32 @@ const DashboardScreen = ({ navigation }) => {
                           )}
 
                           {/* Chosen store label */}
-                          {getItemStoreLabel(item) && item.storeType !== STORE_TYPES.CUSTOM && (
-                            <View style={styles.chosenStorePill}>
-                              <Ionicons name="checkmark-circle" size={14} color="#2EC4B6" />
-                              <Text style={styles.chosenStorePillText}>{getItemStoreLabel(item)}</Text>
+                          {((getItemStoreLabel(item) && item.storeType !== STORE_TYPES.CUSTOM) ||
+                            (item.storeType === STORE_TYPES.CUSTOM && item.customStoreConfirmed)) && (
+                            <View style={styles.chosenStoreRow}>
+                              <View style={styles.chosenStorePill}>
+                                <Ionicons
+                                  name="checkmark-circle"
+                                  size={14}
+                                  color={item.storeType === STORE_TYPES.CUSTOM ? '#FF8C42' : '#2EC4B6'}
+                                />
+                                <Text
+                                  style={[
+                                    styles.chosenStorePillText,
+                                    item.storeType === STORE_TYPES.CUSTOM && { color: '#FF8C42' }
+                                  ]}
+                                >
+                                  {item.storeType === STORE_TYPES.CUSTOM ? `Own: ${item.customStore}` : getItemStoreLabel(item)}
+                                </Text>
+                              </View>
+                              {item.storeType === STORE_TYPES.CUSTOM && (
+                                <TouchableOpacity
+                                  style={styles.customStoreEditBtn}
+                                  onPress={() => setItemCustomStoreConfirmed(item.id, false)}
+                                >
+                                  <Ionicons name="pencil-outline" size={14} color="#FF8C42" />
+                                </TouchableOpacity>
+                              )}
                             </View>
                           )}
                         </View>
@@ -943,9 +999,12 @@ const DashboardScreen = ({ navigation }) => {
 
             {/* ── Add to Cart ── */}
             <TouchableOpacity
-              style={[styles.addToCartButton, orderItems.length === 0 && styles.addToCartButtonDisabled]}
+              style={[
+                styles.addToCartButton,
+                (orderItems.length === 0 && !currentItem.trim()) && styles.addToCartButtonDisabled
+              ]}
               onPress={validateAndAddToCart}
-              disabled={orderItems.length === 0}
+              disabled={orderItems.length === 0 && !currentItem.trim()}
             >
               <LinearGradient colors={['#2EC4B6', '#2EC4B6']} style={styles.addToCartGradient}>
                 <Ionicons name="cart-outline" size={24} color="#fff" />
@@ -1284,8 +1343,14 @@ const styles = StyleSheet.create({
   storeChipTextOrange: { color: '#FF8C42' },
   storeChipTextActive: { color: '#fff' },
   robotChipEmoji: { fontSize: 12 },
-  customStoreInput: { fontSize: 14, color: '#333', backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#ddd', marginTop: 4 },
-  chosenStorePill: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  customStoreInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  customStoreInput: { flex: 1, fontSize: 14, color: '#333', backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#ddd' },
+  customStoreEnterBtn: { backgroundColor: '#FF8C42', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  customStoreEnterBtnDisabled: { backgroundColor: '#FF8C4250' },
+  customStoreEnterBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  chosenStoreRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  customStoreEditBtn: { padding: 4 },
+  chosenStorePill: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   chosenStorePillText: { fontSize: 12, color: '#2EC4B6', fontWeight: '600' },
 
   // ─── ADDRESS ─────────────────────────────────────────────────────────────
