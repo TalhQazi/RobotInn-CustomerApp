@@ -4,7 +4,7 @@ buildscript {
         minSdkVersion = 24
         compileSdkVersion = 36
         targetSdkVersion = 34
-        ndkVersion = "27.1.12297006"
+        ndkVersion = "27.0.12077973"
         kotlinVersion = "1.9.24"
     }
     repositories {
@@ -20,3 +20,41 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+subprojects {
+    def configureProject = { proj ->
+        if (proj.plugins.hasPlugin("com.android.application") || proj.plugins.hasPlugin("com.android.library")) {
+            proj.android {
+                ndkVersion = "27.0.12077973"
+                defaultConfig {
+                    externalNativeBuild {
+                        cmake {
+                            def currentArgs = arguments ?: []
+                            if (!currentArgs.contains("-DANDROID_STL=c++_shared")) {
+                                arguments = currentArgs + ["-DANDROID_STL=c++_shared"]
+                            }
+                        }
+                    }
+                }
+                buildTypes.all { buildType ->
+                    if (buildType.externalNativeBuild.cmake != null) {
+                        def currentArgs = buildType.externalNativeBuild.cmake.arguments ?: []
+                        if (!currentArgs.contains("-DANDROID_STL=c++_shared")) {
+                            buildType.externalNativeBuild.cmake.arguments = currentArgs + ["-DANDROID_STL=c++_shared"]
+                        }
+                    }
+                }
+            }
+            proj.android.buildTypes.all { buildType ->
+                println "PROJECT: ${proj.name}, BUILDTYPE: ${buildType.name}, CMAKE ARGS: ${buildType.externalNativeBuild.cmake?.arguments}"
+            }
+        }
+    }
+    if (project.state.executed) {
+        configureProject(project)
+    } else {
+        project.afterEvaluate {
+            configureProject(project)
+        }
+    }
+}

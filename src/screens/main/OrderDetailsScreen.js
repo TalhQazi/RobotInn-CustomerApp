@@ -652,7 +652,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
           <View style={styles.orderIdRow}>
             <Text style={styles.orderIdLabel}>Order ID</Text>
             <View style={styles.orderIdBadge}>
-              <Text style={styles.orderIdValue}>#{String(order.id || '—').slice(-6)}</Text>
+              <Text style={styles.orderIdValue}>#{order.orderId?.slice(-6) || order.id?.slice(-6) || '—'}</Text>
             </View>
           </View>
 

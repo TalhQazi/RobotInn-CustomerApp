@@ -316,7 +316,7 @@ export const uploadAPI = {
     await ref.putFile(uri);
     
     const downloadURL = await ref.getDownloadURL();
-    return { success: true, data: { url: downloadURL } };
+    return { success: true, url: downloadURL, data: { url: downloadURL } };
   },
 };
 
@@ -368,7 +368,7 @@ export const billsAPI = {
     await ref.putFile(uri);
     
     const downloadURL = await ref.getDownloadURL();
-    return { success: true, data: { url: downloadURL } };
+    return { success: true, url: downloadURL, data: { url: downloadURL } };
   },
 
   submitPaymentProof: async (billId, proofImageUrl) => {

@@ -138,7 +138,7 @@ const CartScreen = ({ navigation }) => {
     <Card style={styles.cartOrderCard}>
       {/* Order Header */}
       <View style={styles.orderCardHeader}>
-        <Text style={styles.orderCardId}>Order #{order.id?.slice(-6)}</Text>
+        <Text style={styles.orderCardId}>Order #{order.orderId?.slice(-6) || order.id?.slice(-6)}</Text>
         <TouchableOpacity onPress={() => removeOrder(order.id)}>
           <Text style={styles.removeText}>Remove</Text>
         </TouchableOpacity>

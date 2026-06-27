@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../theme/colors';
@@ -107,7 +108,7 @@ const OrderHistoryScreen = ({ navigation }) => {
     try {
       const response = await ordersAPI.cancel(order.id);
       if (response.success) {
-        Alert.alert('Order Cancelled', `Order #${order.orderId || order.id} has been cancelled successfully.`, [
+        Alert.alert('Order Cancelled', `Order #${order.orderId?.slice(-6) || order.id?.slice(-6)} has been cancelled successfully.`, [
           { text: 'OK', style: 'cancel' }
         ]);
         setOrders((prev) => prev.map((o) => (
@@ -131,7 +132,7 @@ const OrderHistoryScreen = ({ navigation }) => {
   const promptCancelOrder = (order) => {
     Alert.alert(
       'Cancel Order',
-      `Are you sure you want to cancel order #${order.orderId || order.id}? This can only be cancelled while pending.`,
+      `Are you sure you want to cancel order #${order.orderId?.slice(-6) || order.id?.slice(-6)}? This can only be cancelled while pending.`,
       [
         { text: 'No', style: 'cancel' },
         { text: 'Yes, Cancel', onPress: () => cancelOrder(order) },
@@ -219,7 +220,7 @@ const OrderHistoryScreen = ({ navigation }) => {
               <Text style={styles.restaurantName} numberOfLines={1}>
                 {item.restaurant}
               </Text>
-              <Text style={styles.orderIdText}>#{item.orderId}</Text>
+              <Text style={styles.orderIdText}>#{item.orderId?.slice(-6) || item.id?.slice(-6)}</Text>
               <Text style={styles.orderDate}>
                 {item.date} • {item.time}
               </Text>

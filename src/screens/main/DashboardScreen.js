@@ -161,7 +161,7 @@ const DashboardScreen = ({ navigation }) => {
 
         showThemedAlert({
           title: 'Order Cancelled',
-          message: `Order #${order.orderId || order.id} has been cancelled successfully.`,
+          message: `Order #${order.orderId?.slice(-6) || order.id?.slice(-6)} has been cancelled successfully.`,
           buttons: [{ text: 'OK', style: 'cancel' }]
         });
       } else {
@@ -185,7 +185,7 @@ const DashboardScreen = ({ navigation }) => {
   const promptCancelOrder = (order) => {
     showThemedAlert({
       title: 'Cancel Order',
-      message: `Are you sure you want to cancel order #${order.orderId || order.id}? This can only be cancelled while pending.`,
+      message: `Are you sure you want to cancel order #${order.orderId?.slice(-6) || order.id?.slice(-6) || 'N/A'}? This can only be cancelled while pending.`,
       buttons: [
         { text: 'No', style: 'cancel' },
         { text: 'Yes, Cancel', onPress: () => cancelOrder(order) }
@@ -1054,7 +1054,7 @@ const DashboardScreen = ({ navigation }) => {
                     >
                       <View style={styles.orderHeader}>
                         <View style={styles.orderIdContainer}>
-                          <Text style={styles.orderId}>#{order.id?.slice(-6) || 'N/A'}</Text>
+                          <Text style={styles.orderId}>#{order.orderId?.slice(-6) || order.id?.slice(-6) || 'N/A'}</Text>
                           <View style={[styles.statusBadge, {
                             backgroundColor: order.status === 'Delivered' ? '#2EC4B6'
                               : order.status === 'In Progress' ? '#FF8C42' : '#2EC4B6',
