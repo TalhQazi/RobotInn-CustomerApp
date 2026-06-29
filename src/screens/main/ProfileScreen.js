@@ -70,6 +70,7 @@ const ProfileScreen = ({ navigation }) => {
         maxWidth: 1024,
         maxHeight: 1024,
         quality: 0.85,
+        includeBase64: true,
       });
 
       if (response.didCancel) {
@@ -92,6 +93,7 @@ const ProfileScreen = ({ navigation }) => {
 
       const uploadRes = await uploadAPI.uploadImage({
         uri: asset.uri,
+        base64: asset.base64,
         name: asset.fileName || asset.uri.split('/').pop(),
         type: asset.type || 'image/jpeg',
       });

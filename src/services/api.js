@@ -305,18 +305,28 @@ export const usersAPI = {
 
 // Upload APIs
 export const uploadAPI = {
-  uploadImage: async ({ uri, name, type }) => {
-    if (!uri) throw new Error('No image selected');
+  uploadImage: async ({ uri, base64, name, type }) => {
+    if (!uri && !base64) throw new Error('No image selected');
     
     const firebaseUser = auth().currentUser;
     const uid = firebaseUser ? firebaseUser.uid : 'anon';
-    const fileName = name || `profile-${uid}-${Date.now()}.jpg`;
+    const cleanName = name ? name.replace(/[^a-zA-Z0-9.\-]/g, '_') : 'image.jpg';
+    const fileName = `profile_${uid}_${Date.now()}_${cleanName}`;
     
-    const ref = storage().ref().child(`profiles/${fileName}`);
-    await ref.putFile(uri);
+    const ref = storage().ref(`profiles/${fileName}`);
+    
+    if (base64) {
+      await ref.putString(base64, 'base64', { contentType: type || 'image/jpeg' });
+    } else {
+      await ref.putFile(uri, { contentType: type || 'image/jpeg' });
+    }
     
     const downloadURL = await ref.getDownloadURL();
+
     return { success: true, url: downloadURL, data: { url: downloadURL } };
+
+    return { success: true, data: { url: downloadURL }, url: downloadURL };
+
   },
 };
 
