@@ -38,13 +38,8 @@ function getPositionOnce(options) {
             enableHighAccuracy: options.enableHighAccuracy || false,
           };
 
-          // Try community geolocation first on Android, it's more stable
-          if (Platform.OS === 'android') {
-            Geolocation.getCurrentPosition(positionCallback, errorCallback, requestOptions);
-          } else {
-            // iOS: use GeolocationService
-            GeolocationService.getCurrentPosition(positionCallback, errorCallback, requestOptions);
-          }
+          // Use GeolocationService (FusedLocationProvider) on both platforms for much better accuracy
+          GeolocationService.getCurrentPosition(positionCallback, errorCallback, requestOptions);
         } catch (nativeError) {
           console.error('Native geolocation error:', nativeError);
           reject(nativeError);
@@ -238,10 +233,10 @@ async function reverseGeocodeWithBackup(lat, lng) {
 
 export async function getCurrentCoordinates() {
   const attempts = [
-    { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 },
-    { enableHighAccuracy: false, timeout: 15000, maximumAge: 120000 },
-    { enableHighAccuracy: false, timeout: 20000, maximumAge: 0 },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
     { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 },
+    { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 },
+    { enableHighAccuracy: false, timeout: 20000, maximumAge: 0 },
   ];
 
   let lastError = null;
@@ -269,7 +264,7 @@ export async function getCurrentCoordinates() {
 
   try {
     return await watchForPosition(
-      { enableHighAccuracy: false, maximumAge: 120000 },
+      { enableHighAccuracy: true, maximumAge: 10000 },
       30000
     );
   } catch (watchError) {
