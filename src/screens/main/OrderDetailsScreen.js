@@ -94,6 +94,7 @@ function mapApiOrderToView(o) {
     etaProgress: o.etaProgress,
     riderLocation,
     distanceToCustomer: o.distanceToCustomer,
+    location: o.location || null,
   };
 }
 
@@ -106,7 +107,7 @@ const getItemLabel = (item) => {
     return String(item || '');
   }
 
-  return (
+  const name =
     item.name ||
     item.text ||
     item.itemName ||
@@ -116,8 +117,10 @@ const getItemLabel = (item) => {
     item.product?.title ||
     item.item?.name ||
     item.nameWithQuantity ||
-    JSON.stringify(item)
-  );
+    JSON.stringify(item);
+
+  const store = item.store || '';
+  return store ? `${name} (${store})` : name;
 };
 
 const normalizeItemsText = (order) => {
@@ -256,6 +259,10 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   }, []);
 
   useEffect(() => {
+    if (order.location?.lat && order.location?.lng) {
+      setDestinationCoords(order.location);
+      return undefined;
+    }
     let cancelled = false;
     const address = order.address || order.deliveryAddress || order.dropoff;
     const area = order.area;
@@ -267,7 +274,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     return () => {
       cancelled = true;
     };
-  }, [order.address, order.deliveryAddress, order.dropoff, order.area]);
+  }, [order.address, order.deliveryAddress, order.dropoff, order.area, order.location]);
 
   const riderCoords = useMemo(() => {
     const loc = normalizeRiderLocation(order.riderLocation);
@@ -547,12 +554,6 @@ const OrderDetailsScreen = ({ navigation, route }) => {
             </View>
           ) : null}
 
-          <View style={styles.progressLabels}>
-            <Text style={styles.progressLabel}>Order placed</Text>
-            <Text style={styles.progressLabel}>Preparing</Text>
-            <Text style={styles.progressLabel}>On the way</Text>
-            <Text style={styles.progressLabel}>Delivered</Text>
-          </View>
         </View>
 
         {/* Enhanced Chat Button */}
@@ -651,7 +652,11 @@ const OrderDetailsScreen = ({ navigation, route }) => {
           <View style={styles.orderIdRow}>
             <Text style={styles.orderIdLabel}>Order ID</Text>
             <View style={styles.orderIdBadge}>
+
+              <Text style={styles.orderIdValue}>#{order.orderId?.slice(-6) || order.id?.slice(-6) || '—'}</Text>
+
               <Text style={styles.orderIdValue}>#{String(order.orderId || order.id || '—').slice(-6)}</Text>
+
             </View>
           </View>
 

@@ -149,6 +149,13 @@ const ChatScreen = ({ navigation, route }) => {
   }, [conversationId, myUserId]);
 
   useEffect(() => {
+    global.activeConversationId = conversationId;
+    return () => {
+      global.activeConversationId = null;
+    };
+  }, [conversationId]);
+
+  useEffect(() => {
     if (flatListRef.current && messages.length > 0) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }

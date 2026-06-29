@@ -92,7 +92,7 @@ const MyAddressesScreen = ({ navigation }) => {
         title: title.trim(),
         address: address.trim(),
         isCurrentLocation: useCurrentLocation,
-        location: currentLocation || undefined,
+        location: currentLocation || null,
       };
       const response = await usersAPI.addAddress(payload);
       const newAddress = {
@@ -123,7 +123,7 @@ const MyAddressesScreen = ({ navigation }) => {
         title: title.trim(),
         address: address.trim(),
         isCurrentLocation: useCurrentLocation,
-        location: currentLocation || undefined,
+        location: currentLocation || null,
       };
       const response = await usersAPI.updateAddress(editingAddress.addressId || editingAddress.id, payload);
       const updatedAddresses = addresses.map((addr) =>

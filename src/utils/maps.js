@@ -34,11 +34,41 @@ export async function geocodeAddress(address, area) {
     return geocodeCache.get(key);
   }
 
-  const queries = [
-    area ? `${address}, ${area}, Islamabad, Pakistan` : null,
-    `${address}, Islamabad, Pakistan`,
-    area ? `${area}, Islamabad, Pakistan` : null,
-  ].filter(Boolean);
+  const cleanAddress = String(address).trim();
+  const cleanArea = area ? String(area).trim() : '';
+
+  const hasIslamabad = cleanAddress.toLowerCase().includes('islamabad');
+  const hasPakistan = cleanAddress.toLowerCase().includes('pakistan');
+
+  let suffix = '';
+  if (!hasIslamabad) suffix += ', Islamabad';
+  if (!hasPakistan) suffix += ', Pakistan';
+
+  const queries = [];
+  
+  if (cleanArea) {
+    const hasAreaInAddress = cleanAddress.toLowerCase().includes(cleanArea.toLowerCase());
+    if (!hasAreaInAddress) {
+      queries.push(`${cleanAddress}, ${cleanArea}${suffix}`);
+    } else {
+      queries.push(`${cleanAddress}${suffix}`);
+    }
+  } else {
+    queries.push(`${cleanAddress}${suffix}`);
+  }
+
+  if (cleanArea && !cleanAddress.toLowerCase().includes(cleanArea.toLowerCase())) {
+    queries.push(`${cleanAddress}${suffix}`);
+  }
+
+  if (cleanArea) {
+    const areaHasIslamabad = cleanArea.toLowerCase().includes('islamabad');
+    const areaHasPakistan = cleanArea.toLowerCase().includes('pakistan');
+    let areaSuffix = '';
+    if (!areaHasIslamabad) areaSuffix += ', Islamabad';
+    if (!areaHasPakistan) areaSuffix += ', Pakistan';
+    queries.push(`${cleanArea}${areaSuffix}`);
+  }
 
   for (const queryText of queries) {
     try {
