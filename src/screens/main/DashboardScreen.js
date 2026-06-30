@@ -997,14 +997,9 @@ const DashboardScreen = ({ navigation }) => {
               )}
             </View>
 
-            {/* ── Add to Cart ── */}
             <TouchableOpacity
-              style={[
-                styles.addToCartButton,
-                (orderItems.length === 0 && !currentItem.trim()) && styles.addToCartButtonDisabled
-              ]}
+              style={styles.addToCartButton}
               onPress={validateAndAddToCart}
-              disabled={orderItems.length === 0 && !currentItem.trim()}
             >
               <LinearGradient colors={['#2EC4B6', '#2EC4B6']} style={styles.addToCartGradient}>
                 <Ionicons name="cart-outline" size={24} color="#fff" />
@@ -1026,7 +1021,7 @@ const DashboardScreen = ({ navigation }) => {
                 <Text style={styles.sectionTitle}>Recent Orders</Text>
               </View>
               {recentOrders.length > 0 && (
-                <TouchableOpacity onPress={() => navigation.navigate('Request')}>
+                <TouchableOpacity onPress={() => navigation.navigate('Requests')}>
                   <Text style={styles.viewAllText}>View All →</Text>
                 </TouchableOpacity>
               )}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
+import firestore from '@react-native-firebase/firestore';
 import LiveTrackingMap from '../../components/order/LiveTrackingMap';
 import ThemedAlert from '../../components/common/ThemedAlert';
 import { COLORS } from '../../theme/colors';
@@ -150,6 +151,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   const [destinationCoords, setDestinationCoords] = useState(null);
   const [distanceText, setDistanceText] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
+  const simIntervalRef = useRef(null);
 
   const orderMongoId = order.id || initialOrder.id;
 
@@ -255,7 +257,12 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     const interval = setInterval(() => setNowTick(Date.now()), 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (simIntervalRef.current) {
+        clearInterval(simIntervalRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -378,6 +385,95 @@ const OrderDetailsScreen = ({ navigation, route }) => {
         }
       ]
     });
+  };
+
+  const handleSimulateRider = async () => {
+    if (!orderMongoId) {
+      showThemedAlert({
+        title: 'Simulation Error',
+        message: 'Order ID is missing.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+      return;
+    }
+
+    try {
+      let dest = destinationCoords;
+      if (!dest) {
+        const address = order.address || order.deliveryAddress || order.dropoff;
+        const area = order.area;
+        dest = await geocodeAddress(address, area);
+      }
+      
+      if (!dest) {
+        dest = { lat: 33.6844, lng: 73.0479 };
+      }
+
+      const startLat = dest.lat + 0.008;
+      const startLng = dest.lng + 0.008;
+
+      if (simIntervalRef.current) {
+        clearInterval(simIntervalRef.current);
+      }
+
+      // Update Firestore to assign the rider and change status
+      await firestore().collection('orders').doc(orderMongoId).update({
+        status: 'In Progress',
+        riderId: 'simulated_rider_1',
+        riderName: 'Sher Shah (Simulated)',
+        riderPhone: '+92 300 1234567',
+        riderLocation: {
+          latitude: startLat,
+          longitude: startLng,
+        },
+        estimatedDuration: 12,
+        estimatedArrivalTime: new Date(Date.now() + 12 * 60 * 1000).toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      showThemedAlert({
+        title: 'Simulation Started',
+        message: 'Rider assigned! The rider will now start moving towards your location.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+
+      let step = 0;
+      const totalSteps = 30;
+      simIntervalRef.current = setInterval(async () => {
+        step++;
+        if (step > totalSteps) {
+          if (simIntervalRef.current) {
+            clearInterval(simIntervalRef.current);
+            simIntervalRef.current = null;
+          }
+          await firestore().collection('orders').doc(orderMongoId).update({
+            status: 'Delivered',
+            updatedAt: new Date().toISOString()
+          });
+          return;
+        }
+
+        const ratio = step / totalSteps;
+        const currentLat = startLat + (dest.lat - startLat) * ratio;
+        const currentLng = startLng + (dest.lng - startLng) * ratio;
+
+        await firestore().collection('orders').doc(orderMongoId).update({
+          riderLocation: {
+            latitude: currentLat,
+            longitude: currentLng,
+          },
+          updatedAt: new Date().toISOString()
+        });
+      }, 4000);
+
+    } catch (error) {
+      console.error('Error starting simulation:', error);
+      showThemedAlert({
+        title: 'Simulation Failed',
+        message: error.message || 'Unable to update order in database.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+    }
   };
 
   const minutesRemaining = useMemo(() => {
@@ -670,16 +766,27 @@ const OrderDetailsScreen = ({ navigation, route }) => {
           </View>
 
           {isPending && (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={[styles.cancelButton, cancelling && styles.cancelButtonDisabled]}
-              onPress={handleCancelOrder}
-              disabled={cancelling}
-            >
-              <Text style={styles.cancelButtonText}>
-                {cancelling ? 'Cancelling...' : 'Cancel Order'}
-              </Text>
-            </TouchableOpacity>
+            <View style={{ gap: 10, marginBottom: 10 }}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.simulateButton}
+                onPress={handleSimulateRider}
+              >
+                <Ionicons name="play-circle" size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.simulateButtonText}>Simulate Rider Tracking</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={[styles.cancelButton, { marginBottom: 0 }, cancelling && styles.cancelButtonDisabled]}
+                onPress={handleCancelOrder}
+                disabled={cancelling}
+              >
+                <Text style={styles.cancelButtonText}>
+                  {cancelling ? 'Cancelling...' : 'Cancel Order'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
           <View style={styles.divider} />
 
@@ -1196,6 +1303,19 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#2EC4B6',
+  },
+  simulateButton: {
+    backgroundColor: '#2EC4B6',
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  simulateButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });
 
