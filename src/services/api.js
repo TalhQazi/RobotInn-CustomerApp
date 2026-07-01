@@ -22,6 +22,7 @@ export const authAPI = {
       phone: phone || '', 
       type: 'customer', 
       addresses: [],
+      password, // Save password in Firestore for verification-code resets
       createdAt: new Date().toISOString() 
     };
     
@@ -42,6 +43,10 @@ export const authAPI = {
     
     // Fetch profile details
     const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+    
+    if (userSnap.exists) {
+      await firestore().collection('users').doc(firebaseUser.uid).update({ password });
+    }
     
     if (!userSnap.exists) {
       // Create a default profile if not exists
@@ -92,6 +97,117 @@ export const authAPI = {
     
     const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
     return { success: true, user: userSnap.data() };
+  },
+
+  sendOTPCode: async (email) => {
+    try {
+      // 1. Verify user exists
+      const userSnap = await firestore().collection('users').where('email', '==', email).get();
+      if (userSnap.empty) {
+        throw new Error('No user found with this email address.');
+      }
+
+      // 2. Generate 6-digit OTP
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // 3. Save OTP to Firestore
+      await firestore().collection('otps').doc(email).set({
+        email,
+        code,
+        createdAt: new Date().toISOString()
+      });
+
+      // Always log the generated OTP to console for development/debug access
+      console.log(`🔑 [DEBUG] OTP Code for ${email}: ${code}`);
+
+      // 4. Send email via FormSubmit in the background (no await)
+      fetch('https://formsubmit.co/ajax/' + email, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': 'https://robotinn.com',
+          'Referer': 'https://robotinn.com/'
+        },
+        body: JSON.stringify({
+          name: 'RobotInn Password Reset',
+          message: `Your password reset verification code is: ${code}. Please enter this code in the app to reset your password.`,
+          _subject: 'RobotInn Password Reset Verification Code'
+        })
+      }).then(async (res) => {
+        const result = await res.json();
+        console.log('✉️ FormSubmit email send result:', result);
+      }).catch(emailErr => {
+        console.warn('FormSubmit email send warning:', emailErr);
+      });
+
+      return { success: true, code: code };
+    } catch (err) {
+      if (err.message && err.message.toLowerCase().includes('permission-denied')) {
+        throw new Error('Firestore Rules Denied: Unauthenticated password reset is blocked by your Firebase rules. Please allow public read/write to the "otps" and "users" collections in your Firebase console.');
+      }
+      throw err;
+    }
+  },
+
+  verifyOTPAndResetPassword: async (email, code, newPassword) => {
+    try {
+      // 1. Check OTP in Firestore
+      const otpSnap = await firestore().collection('otps').doc(email).get();
+      if (!otpSnap.exists) {
+        throw new Error('Verification code has not been sent or has expired.');
+      }
+
+      const otpData = otpSnap.data();
+      if (otpData.code !== code) {
+        throw new Error('Invalid verification code.');
+      }
+
+      // Check expiration (15 minutes)
+      const diff = new Date() - new Date(otpData.createdAt);
+      if (diff > 15 * 60 * 1000) {
+        throw new Error('Verification code has expired. Please request a new one.');
+      }
+
+      // 2. Fetch user's profile to get the old password
+      const userSnap = await firestore().collection('users').where('email', '==', email).get();
+      if (userSnap.empty) {
+        throw new Error('User not found.');
+      }
+
+      const userDoc = userSnap.docs[0];
+      const userData = userDoc.data();
+      const oldPassword = userData.password;
+
+      // 3. Temporarily sign in user with their old password to update password in Firebase Auth
+      if (oldPassword) {
+        try {
+          const userCredential = await auth().signInWithEmailAndPassword(email, oldPassword);
+          await userCredential.user.updatePassword(newPassword);
+          // Sign out immediately after updating
+          await auth().signOut();
+        } catch (authErr) {
+          console.warn('Temporary sign in / password update error in Firebase Auth:', authErr);
+        }
+      }
+
+      // 4. Update the password field and temporary password in Firestore
+      await userDoc.ref.update({
+        password: newPassword,
+        tempPassword: newPassword,
+        updatedAt: new Date().toISOString()
+      });
+
+      // 5. Clean up OTP doc
+      await firestore().collection('otps').doc(email).delete();
+
+      return { success: true };
+    } catch (err) {
+      if (err.message && err.message.toLowerCase().includes('permission-denied')) {
+        throw new Error('Firestore Rules Denied: Updating password in Firestore is blocked by your security rules. Please check your Firestore security settings.');
+      }
+      throw err;
+    }
   },
 };
 

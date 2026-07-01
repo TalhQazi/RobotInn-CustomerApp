@@ -17,20 +17,18 @@ import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import CustomInput from '../../components/common/CustomInput';
 import CustomButton from '../../components/common/CustomButton';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { storeData } from '../../storage/asyncStorage';
-import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
 import { authAPI } from '../../services/api';
-import { registerPendingFcmToken } from '../../services/firebase';
-import { resetToMain } from '../../navigation/navigationRef';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-const LoginScreen = ({ navigation }) => {
+const ForgotPasswordScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [step, setStep] = useState(1); // 1 = Enter Email, 2 = Verify Code & Enter Password
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [showPassword, setShowPassword] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
     title: '',
@@ -46,7 +44,9 @@ const LoginScreen = ({ navigation }) => {
   const logoScale = useRef(new Animated.Value(0.5)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
 
-  // useEffect hook - called after all state hooks
+  // Step transition animation
+  const stepFadeAnim = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
     // Entrance animations
     Animated.parallel([
@@ -78,11 +78,27 @@ const LoginScreen = ({ navigation }) => {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []); // Empty dependency array - runs once on mount
+  }, []);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      setError('Please enter email and password.');
+  const transitionToStep = (nextStep) => {
+    Animated.timing(stepFadeAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setStep(nextStep);
+      setError(null);
+      Animated.timing(stepFadeAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  const handleSendCode = async () => {
+    if (!email) {
+      setError('Please enter your email address.');
       return;
     }
 
@@ -96,75 +112,33 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
 
     try {
-      const response = await authAPI.login(email, password);
+      await authAPI.sendOTPCode(email);
       setLoading(false);
 
-      const userType = String(response.user?.type || '').toLowerCase();
-      if (userType !== 'customer') {
-        await authAPI.logout();
-        setAlertConfig({
-          title: 'Wrong app',
-          message:
-            userType === 'rider'
-              ? 'This account is for delivery partners. Please sign in using the RobotInn Rider app.'
-              : 'This account cannot be used in the customer app.',
-          type: 'error',
-          onConfirm: () => setAlertVisible(false),
-        });
-        setAlertVisible(true);
-        return;
-      }
-
-      // Show styled success alert
       setAlertConfig({
-        title: 'Welcome Back!',
-        message: `Welcome back, ${response.user?.name || 'User'}!`,
+        title: 'Verification Code Sent! ✉️',
+        message: `A 6-digit verification code has been sent to ${email}. Check your inbox (or spam) and enter it here.`,
         type: 'success',
-        onConfirm: async () => {
+        onConfirm: () => {
           setAlertVisible(false);
-          // Register FCM token now that we have auth token
-          try {
-            console.log('🔐 User logged in successfully');
-            console.log('📝 AUTH TOKEN AVAILABLE - Attempting to register pending FCM token...');
-            await registerPendingFcmToken();
-          } catch (error) {
-            console.error('❌ Error registering pending FCM token after login:', error);
-          }
-          resetToMain();
+          transitionToStep(2);
         },
       });
       setAlertVisible(true);
     } catch (err) {
       setLoading(false);
-      
-      // Format user-friendly error message
-      let errorMessage = 'Unable to login. Please try again.';
-      
+      let errorMessage = 'Could not send verification code. Please try again.';
       if (err.message) {
         errorMessage = err.message;
       }
       
-      // Check for backend validation errors
-      if (err.errors && Array.isArray(err.errors)) {
-        errorMessage = err.errors.map(e => e.message).join('\n');
+      if (errorMessage.toLowerCase().includes('no user') || 
+          errorMessage.toLowerCase().includes('user-not-found')) {
+        errorMessage = 'No user record found corresponding to this email address.';
       }
-      
-      // Specific error messages for common cases
-      if (errorMessage.toLowerCase().includes('invalid credentials') || 
-          errorMessage.toLowerCase().includes('invalid email or password')) {
-        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
-      } else if (errorMessage.toLowerCase().includes('network') || 
-                 errorMessage.toLowerCase().includes('failed to fetch')) {
-        errorMessage = 'Network error. Please check your internet connection and try again.';
-      } else if (errorMessage.toLowerCase().includes('server error')) {
-        errorMessage = 'Server is temporarily unavailable. Please try again later.';
-      } else if (errorMessage.toLowerCase().includes('user not found')) {
-        errorMessage = 'No account found with this email. Please sign up first.';
-      }
-      
-      // Show styled error alert
+
       setAlertConfig({
-        title: 'Login Failed',
+        title: 'Error',
         message: errorMessage,
         type: 'error',
         onConfirm: () => setAlertVisible(false),
@@ -173,14 +147,49 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
-  const handleForgotPassword = () => {
-    setAlertConfig({
-      title: 'Forgot Password?',
-      message: 'Enter your email to reset your password.',
-      type: 'error',
-      onConfirm: () => setAlertVisible(false),
-    });
-    setAlertVisible(true);
+  const handleResetPassword = async () => {
+    if (!code || code.length !== 6) {
+      setError('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      await authAPI.verifyOTPAndResetPassword(email, code, newPassword);
+      setLoading(false);
+
+      setAlertConfig({
+        title: 'Password Updated! 🎉',
+        message: 'Your password has been successfully reset in the database.',
+        type: 'success',
+        onConfirm: () => {
+          setAlertVisible(false);
+          navigation.navigate('Login');
+        },
+      });
+      setAlertVisible(true);
+    } catch (err) {
+      setLoading(false);
+      let errorMessage = 'Could not reset password. Please try again.';
+      if (err.message) {
+        errorMessage = err.message;
+      }
+
+      setAlertConfig({
+        title: 'Reset Failed',
+        message: errorMessage,
+        type: 'error',
+        onConfirm: () => setAlertVisible(false),
+      });
+      setAlertVisible(true);
+    }
   };
 
   const toggleShowPassword = () => {
@@ -189,6 +198,19 @@ const LoginScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity 
+        style={styles.backButton} 
+        onPress={() => {
+          if (step === 2) {
+            transitionToStep(1);
+          } else {
+            navigation.navigate('Login');
+          }
+        }}
+      >
+        <Icon name="arrow-back" size={24} color={COLORS.textPrimary} />
+      </TouchableOpacity>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -227,72 +249,109 @@ const LoginScreen = ({ navigation }) => {
               </Animated.View>
 
               <Animated.View style={{ opacity: logoOpacity }}>
-                <Text style={styles.welcomeText}>Welcome Back! 👋</Text>
-                <Text style={styles.subtitle}>Login to your account</Text>
+                <Text style={styles.welcomeText}>Reset Password</Text>
+                <Text style={styles.subtitle}>
+                  {step === 1 
+                    ? 'Enter your email to receive a verification code' 
+                    : `Enter the code sent to ${email}`
+                  }
+                </Text>
               </Animated.View>
             </View>
 
-            {/* Form Section */}
-            <View style={styles.formContainer}>
-              <View style={styles.formCard}>
-                <CustomInput
-                  label="Email Address"
-                  placeholder="customer@robotinn.com"
-                  value={email}
-                  onChangeText={(text) => setEmail(text.trim().toLowerCase())}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="email"
-                  textContentType="emailAddress"
-                  icon={<Icon name="mail-outline" size={20} color={COLORS.primary} />}
-                />
+            {/* Form Section with smooth step transition animation */}
+            <Animated.View style={[styles.formContainer, { opacity: stepFadeAnim }]}>
+              {step === 1 ? (
+                // Step 1: Email Request
+                <View style={styles.formCard}>
+                  <CustomInput
+                    label="Email Address"
+                    placeholder="customer@robotinn.com"
+                    value={email}
+                    onChangeText={(text) => setEmail(text.trim().toLowerCase())}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="email"
+                    textContentType="emailAddress"
+                    icon={<Icon name="mail-outline" size={20} color={COLORS.primary} />}
+                  />
 
-                <CustomInput
-                  label="Password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  icon={<Icon name="lock-closed-outline" size={20} color={COLORS.primary} />}
-                  rightIcon={
-                    <TouchableOpacity onPress={toggleShowPassword}>
-                      <Icon
-                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color={COLORS.textSecondary}
-                      />
+                  {error && (
+                    <Animated.View style={styles.errorContainer}>
+                      <Icon name="alert-circle-outline" size={16} color={COLORS.error || '#FF6B6B'} />
+                      <Text style={styles.errorText}>{error}</Text>
+                    </Animated.View>
+                  )}
+
+                  <CustomButton
+                    title="Send Verification Code"
+                    onPress={handleSendCode}
+                    loading={loading}
+                    style={styles.resetButton}
+                  />
+                </View>
+              ) : (
+                // Step 2: Code Verification and Password Reset
+                <View style={styles.formCard}>
+                  <CustomInput
+                    label="6-Digit Verification Code"
+                    placeholder="123456"
+                    value={code}
+                    onChangeText={(text) => setCode(text.trim().replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    icon={<Icon name="key-outline" size={20} color={COLORS.primary} />}
+                  />
+
+                  <CustomInput
+                    label="New Password"
+                    placeholder="••••••••"
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    secureTextEntry={!showPassword}
+                    icon={<Icon name="lock-closed-outline" size={20} color={COLORS.primary} />}
+                    rightIcon={
+                      <TouchableOpacity onPress={toggleShowPassword}>
+                        <Icon
+                          name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                          size={20}
+                          color={COLORS.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    }
+                  />
+
+                  {error && (
+                    <Animated.View style={styles.errorContainer}>
+                      <Icon name="alert-circle-outline" size={16} color={COLORS.error || '#FF6B6B'} />
+                      <Text style={styles.errorText}>{error}</Text>
+                    </Animated.View>
+                  )}
+
+                  <CustomButton
+                    title="Reset Password"
+                    onPress={handleResetPassword}
+                    loading={loading}
+                    style={styles.resetButton}
+                  />
+
+                  <View style={styles.resendContainer}>
+                    <Text style={styles.resendText}>Didn't receive the code? </Text>
+                    <TouchableOpacity onPress={handleSendCode}>
+                      <Text style={styles.resendAction}>Resend Code</Text>
                     </TouchableOpacity>
-                  }
-                />
-
-                <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgotPassword}>
-                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                </TouchableOpacity>
-
-                {error && (
-                  <Animated.View style={styles.errorContainer}>
-                    <Icon name="alert-circle-outline" size={16} color={COLORS.error || '#FF6B6B'} />
-                    <Text style={styles.errorText}>{error}</Text>
-                  </Animated.View>
-                )}
-
-                <CustomButton
-                  title="Login"
-                  onPress={handleLogin}
-                  loading={loading}
-                  style={styles.loginButton}
-                />
-              </View>
+                  </View>
+                </View>
+              )}
 
               {/* Footer */}
               <View style={styles.footer}>
-                <Text style={styles.footerText}>Don't have an account? </Text>
-                <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
-                  <Text style={styles.signupText}>Sign Up</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                  <Text style={styles.backToLoginText}>Back to Login</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </Animated.View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -334,6 +393,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  backButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 20,
+    left: 20,
+    zIndex: 10,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: COLORS.white,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   keyboardView: {
     flex: 1,
@@ -386,6 +459,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontWeight: '500',
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
   formContainer: {
     width: '100%',
@@ -400,18 +474,8 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 8,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  forgotPasswordText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  loginButton: {
-    marginTop: 8,
+  resetButton: {
+    marginTop: 16,
     width: '100%',
     borderRadius: 12,
   },
@@ -431,22 +495,32 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
+  resendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  resendText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  resendAction: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 13,
+  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 24,
     paddingVertical: 16,
   },
-  footerText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  signupText: {
+  backToLoginText: {
     fontSize: 14,
     color: COLORS.primary,
     fontWeight: '700',
   },
-  // Custom Alert Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -514,4 +588,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default LoginScreen;
+export default ForgotPasswordScreen;
