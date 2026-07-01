@@ -210,8 +210,8 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     }
 
     let active = true;
-    let unsubscribeLocation = () => {};
-    let unsubscribeOrder = () => {};
+    let unsubscribeLocation = () => { };
+    let unsubscribeOrder = () => { };
 
     (async () => {
       await connectSocket();
@@ -404,7 +404,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
         const area = order.area;
         dest = await geocodeAddress(address, area);
       }
-      
+
       if (!dest) {
         dest = { lat: 33.6844, lng: 73.0479 };
       }
@@ -757,9 +757,9 @@ const OrderDetailsScreen = ({ navigation, route }) => {
           </View>
 
           <View style={styles.statusRow}>
-            <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}> 
+            <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}>
               <Ionicons name={getStatusIcon()} size={16} color={getStatusColor()} />
-              <Text style={[styles.statusText, { color: getStatusColor() }]}> 
+              <Text style={[styles.statusText, { color: getStatusColor() }]}>
                 {order.status || '—'}
               </Text>
             </View>

@@ -89,30 +89,18 @@ const ProfileScreen = ({ navigation }) => {
       }
 
       setUploadingAvatar(true);
-      console.log('Starting profile picture upload...', { uri: asset.uri, type: asset.type });
+      console.log('Starting profile picture update with base64...');
 
-      const uploadRes = await uploadAPI.uploadImage({
-        uri: asset.uri,
-        base64: asset.base64,
-        name: asset.fileName || asset.uri.split('/').pop(),
-        type: asset.type || 'image/jpeg',
-      });
+      const mime = asset.type || 'image/jpeg';
+      const base64Url = `data:${mime};base64,${asset.base64}`;
 
-      console.log('Upload response:', uploadRes);
-
-      const avatarUrl = uploadRes?.url;
-      if (!avatarUrl) {
-        console.error('No URL in upload response:', uploadRes);
-        throw new Error('Upload did not return an image URL');
-      }
-
-      console.log('Updating profile with avatar URL:', avatarUrl);
+      console.log('Updating profile with base64 avatar...');
       
-      const profileRes = await usersAPI.updateProfile({ avatar: avatarUrl });
+      const profileRes = await usersAPI.updateProfile({ avatar: base64Url });
       console.log('Profile update response:', profileRes);
       
       if (profileRes?.success) {
-        const updatedUser = profileRes?.data || { avatar: avatarUrl };
+        const updatedUser = profileRes?.data || { avatar: base64Url };
         await updateLocalUser(updatedUser);
         await refreshProfile();
         Alert.alert('Success', 'Profile picture updated successfully');

@@ -315,18 +315,15 @@ export const uploadAPI = {
     
     const ref = storage().ref(`profiles/${fileName}`);
     
-    if (base64) {
-      await ref.putString(base64, 'base64', { contentType: type || 'image/jpeg' });
-    } else {
+    if (uri) {
       await ref.putFile(uri, { contentType: type || 'image/jpeg' });
+    } else if (base64) {
+      await ref.putString(base64, 'base64', { contentType: type || 'image/jpeg' });
     }
     
     const downloadURL = await ref.getDownloadURL();
 
     return { success: true, url: downloadURL, data: { url: downloadURL } };
-
-    return { success: true, data: { url: downloadURL }, url: downloadURL };
-
   },
 };
 

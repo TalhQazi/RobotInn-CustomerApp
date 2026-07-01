@@ -12,7 +12,20 @@
           "package_name": "com.robotinncustomerapp"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "301557654113-oc1i31nbpkeio61cgen5fblmasgb6rsr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.robotinncustomerapp",
+            "certificate_hash": "c83993ed4293b07cdb7cf148bb178e880e3c31f5"
+          }
+        },
+        {
+          "client_id": "301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyC8Dbpbk_IPYGw0gRKuSDLDsTmm8vs1xbc"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -31,7 +49,20 @@
           "package_name": "com.robotinnriderapp"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "301557654113-3d6m09eo2fujc3ulhedlc63sj1uvqcep.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.robotinnriderapp",
+            "certificate_hash": "c83993ed4293b07cdb7cf148bb178e880e3c31f5"
+          }
+        },
+        {
+          "client_id": "301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyC8Dbpbk_IPYGw0gRKuSDLDsTmm8vs1xbc"
@@ -39,7 +70,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
