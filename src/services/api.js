@@ -1,8 +1,14 @@
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { getData, storeData, removeData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
+
+// Configure Google Sign-In
+GoogleSignin.configure({
+  webClientId: '301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com',
+});
 
 // Native Firebase replacement for the Express/Node REST backend
 // Mimics existing API interface so no UI screens break!
@@ -11,8 +17,44 @@ import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 export const authAPI = {
   register: async (userData) => {
     const { email, password, name, phone } = userData;
-    const userCredential = await auth().createUserWithEmailAndPassword(email, password);
-    const firebaseUser = userCredential.user;
+    let firebaseUser;
+    let existingProfile = null;
+
+    try {
+      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      firebaseUser = userCredential.user;
+    } catch (createErr) {
+      // If email already exists in Firebase Auth (e.g. registered as rider), sign in instead
+      if (createErr.code === 'auth/email-already-in-use') {
+        const userCredential = await auth().signInWithEmailAndPassword(email, password);
+        firebaseUser = userCredential.user;
+        const existingSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+        if (existingSnap.exists) {
+          existingProfile = existingSnap.data();
+        }
+      } else {
+        throw createErr;
+      }
+    }
+
+    if (existingProfile) {
+      // User already exists (e.g. as rider) — add 'customer' to their types
+      const currentTypes = existingProfile.types || [existingProfile.type || 'rider'];
+      if (!currentTypes.includes('customer')) {
+        currentTypes.push('customer');
+      }
+      await firestore().collection('users').doc(firebaseUser.uid).update({
+        types: currentTypes,
+        password,
+        addresses: existingProfile.addresses || [],
+      });
+      const profile = { ...existingProfile, types: currentTypes, type: 'customer', password };
+      await Promise.all([
+        storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
+        storeData(ASYNC_STORAGE_KEYS.USER_DATA, profile)
+      ]);
+      return { success: true, user: profile, token: firebaseUser.uid };
+    }
     
     const profile = { 
       id: firebaseUser.uid,
@@ -20,7 +62,8 @@ export const authAPI = {
       email, 
       name: name || 'User', 
       phone: phone || '', 
-      type: 'customer', 
+      type: 'customer',
+      types: ['customer'],
       addresses: [],
       password, // Save password in Firestore for verification-code resets
       createdAt: new Date().toISOString() 
@@ -70,10 +113,16 @@ export const authAPI = {
     }
 
     const profile = userSnap.data();
-    if (profile?.type !== 'customer') {
-      await auth().signOut();
-      throw new Error('Access Denied: Only customers can log into this app.');
+    // Unified auth: allow any user to log into CustomerApp
+    // If they don't have 'customer' in their types yet, add it
+    const currentTypes = profile.types || [profile.type];
+    if (!currentTypes.includes('customer')) {
+      currentTypes.push('customer');
+      await firestore().collection('users').doc(firebaseUser.uid).update({ types: currentTypes });
     }
+    // Present the user as a customer in this app
+    profile.type = 'customer';
+    profile.types = currentTypes;
     
     await Promise.all([
       storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
@@ -85,10 +134,59 @@ export const authAPI = {
 
   logout: async () => {
     await auth().signOut();
+    try {
+      await GoogleSignin.signOut();
+    } catch (signOutErr) {
+      console.warn('Google Sign-Out warning:', signOutErr);
+    }
     await Promise.all([
       removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN),
       removeData(ASYNC_STORAGE_KEYS.USER_DATA)
     ]);
+  },
+
+  signInWithGoogle: async () => {
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const signInResult = await GoogleSignin.signIn();
+      
+      const idToken = signInResult.data ? signInResult.data.idToken : signInResult.idToken;
+      if (!idToken) {
+        throw new Error('Failed to obtain Google ID Token.');
+      }
+
+      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
+      const userCredential = await auth().signInWithCredential(googleCredential);
+      const firebaseUser = userCredential.user;
+
+      const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+      let profile;
+      if (!userSnap.exists) {
+        profile = {
+          id: firebaseUser.uid,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || 'Customer',
+          phone: firebaseUser.phoneNumber || '',
+          type: 'customer',
+          addresses: [],
+          createdAt: new Date().toISOString()
+        };
+        await firestore().collection('users').doc(firebaseUser.uid).set(profile);
+      } else {
+        profile = userSnap.data();
+      }
+
+      await Promise.all([
+        storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
+        storeData(ASYNC_STORAGE_KEYS.USER_DATA, profile)
+      ]);
+
+      return { success: true, token: firebaseUser.uid, user: profile };
+    } catch (err) {
+      console.error('Google Sign-In Error:', err);
+      throw err;
+    }
   },
 
   getMe: async () => {

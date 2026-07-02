@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "301557654113-oc1i31nbpkeio61cgen5fblmasgb6rsr.apps.googleusercontent.com",
+          "client_id": "301557654113-5f2etps7hsmne4bg6fa3dormpjiljdr1.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.robotinncustomerapp",
-            "certificate_hash": "c83993ed4293b07cdb7cf148bb178e880e3c31f5"
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
           }
         },
         {

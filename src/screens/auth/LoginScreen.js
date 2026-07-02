@@ -173,6 +173,67 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      const response = await authAPI.signInWithGoogle();
+      setLoading(false);
+
+      const userType = String(response.user?.type || '').toLowerCase();
+      if (userType !== 'customer') {
+        await authAPI.logout();
+        setAlertConfig({
+          title: 'Wrong app',
+          message:
+            userType === 'rider'
+              ? 'This account is for delivery partners. Please sign in using the RobotInn Rider app.'
+              : 'This account cannot be used in the customer app.',
+          type: 'error',
+          onConfirm: () => setAlertVisible(false),
+        });
+        setAlertVisible(true);
+        return;
+      }
+
+      // Show styled success alert
+      setAlertConfig({
+        title: 'Welcome Back!',
+        message: `Welcome back, ${response.user?.name || 'User'}!`,
+        type: 'success',
+        onConfirm: async () => {
+          setAlertVisible(false);
+          // Register FCM token now that we have auth token
+          try {
+            console.log('🔐 User logged in successfully');
+            console.log('📝 AUTH TOKEN AVAILABLE - Attempting to register pending FCM token...');
+            await registerPendingFcmToken();
+          } catch (error) {
+            console.error('❌ Error registering pending FCM token after login:', error);
+          }
+          resetToMain();
+        },
+      });
+      setAlertVisible(true);
+    } catch (err) {
+      setLoading(false);
+      console.warn('Google login error:', err);
+      let errorMessage = 'Google login failed. Please try again.';
+      if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setAlertConfig({
+        title: 'Login Failed',
+        message: errorMessage,
+        type: 'error',
+        onConfirm: () => setAlertVisible(false),
+      });
+      setAlertVisible(true);
+    }
+  };
+
   const handleForgotPassword = () => {
     setAlertConfig({
       title: 'Forgot Password?',
@@ -283,6 +344,22 @@ const LoginScreen = ({ navigation }) => {
                   loading={loading}
                   style={styles.loginButton}
                 />
+
+                <View style={styles.dividerContainer}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.googleButton} 
+                  onPress={handleGoogleLogin}
+                  activeOpacity={0.85}
+                  disabled={loading}
+                >
+                  <Icon name="logo-google" size={20} color="#EA4335" style={styles.googleIcon} />
+                  <Text style={styles.googleButtonText}>Continue with Google</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Footer */}
@@ -509,6 +586,46 @@ const styles = StyleSheet.create({
   },
   alertButtonText: {
     color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 18,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1.2,
+    backgroundColor: '#E2E8F0',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: COLORS.textSecondary || '#718096',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 14,
+    width: '100%',
+    shadowColor: COLORS.shadow || '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  googleIcon: {
+    marginRight: 10,
+  },
+  googleButtonText: {
+    color: '#2D3748',
     fontSize: 16,
     fontWeight: '700',
   },
