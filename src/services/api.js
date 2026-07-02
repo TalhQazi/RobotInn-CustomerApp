@@ -169,6 +169,7 @@ export const authAPI = {
           name: firebaseUser.displayName || 'Customer',
           phone: firebaseUser.phoneNumber || '',
           type: 'customer',
+          types: ['customer'],
           addresses: [],
           createdAt: new Date().toISOString()
         };
@@ -176,6 +177,14 @@ export const authAPI = {
       } else {
         profile = userSnap.data();
       }
+
+      const currentTypes = profile.types || [profile.type || 'customer'];
+      if (!currentTypes.includes('customer')) {
+        currentTypes.push('customer');
+        await firestore().collection('users').doc(firebaseUser.uid).update({ types: currentTypes });
+      }
+      profile.type = 'customer';
+      profile.types = currentTypes;
 
       await Promise.all([
         storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
@@ -194,7 +203,15 @@ export const authAPI = {
     if (!firebaseUser) throw new Error('Not logged in');
     
     const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
-    return { success: true, user: userSnap.data() };
+    const profile = userSnap.data();
+    if (profile) {
+      const currentTypes = profile.types || [profile.type || 'customer'];
+      if (currentTypes.includes('customer')) {
+        profile.type = 'customer';
+      }
+      profile.types = currentTypes;
+    }
+    return { success: true, data: profile, user: profile };
   },
 
   sendOTPCode: async (email) => {
@@ -457,7 +474,15 @@ export const usersAPI = {
     if (!firebaseUser) throw new Error('Authentication required');
 
     const docSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
-    return { success: true, data: docSnap.data() };
+    const profile = docSnap.data();
+    if (profile) {
+      const currentTypes = profile.types || [profile.type || 'customer'];
+      if (currentTypes.includes('customer')) {
+        profile.type = 'customer';
+      }
+      profile.types = currentTypes;
+    }
+    return { success: true, data: profile };
   },
 
   updateProfile: async (userData) => {

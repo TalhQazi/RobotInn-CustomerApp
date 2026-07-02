@@ -114,11 +114,7 @@ const HelpCenterScreen = ({ navigation }) => {
           ))}
         </View>
 
-        {/* Bottom Note */}
-        <Text style={styles.bottomNote}>
-          Can't find what you're looking for?{'\n'}
-          Reach out to us directly via phone or email.
-        </Text>
+
       </ScrollView>
     </SafeAreaView>
   );
