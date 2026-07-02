@@ -69,15 +69,40 @@ const SplashScreen = () => {
       try {
         const token = await getData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
         if (token) {
-          try {
-            const me = await authAPI.getMe();
-            const userType = String(me?.data?.type || '').toLowerCase();
-            if (userType === 'customer') {
-              goMain = true;
-            } else {
-              await authAPI.logout();
+          // Wait for Firebase Auth to fully restore the persisted session
+          // auth().currentUser can be null momentarily on cold start
+          const firebaseUser = await new Promise((resolve) => {
+            const unsubscribe = require('@react-native-firebase/auth').default().onAuthStateChanged((user) => {
+              unsubscribe();
+              resolve(user);
+            });
+            // Safety timeout: if onAuthStateChanged never fires, resolve null after 5s
+            setTimeout(() => { resolve(null); }, 5000);
+          });
+
+          if (firebaseUser) {
+            try {
+              const me = await authAPI.getMe();
+              const userType = String(me?.data?.type || '').toLowerCase();
+              if (userType === 'customer') {
+                goMain = true;
+              } else {
+                await authAPI.logout();
+              }
+            } catch {
+              // getMe failed (e.g. Firestore profile not found) but Firebase user is valid
+              // Fall back to locally stored user data instead of logging out
+              const storedUser = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
+              const storedType = String(storedUser?.type || '').toLowerCase();
+              if (storedUser && storedType === 'customer') {
+                goMain = true;
+              } else {
+                await removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
+                await removeData(ASYNC_STORAGE_KEYS.USER_DATA);
+              }
             }
-          } catch {
+          } else {
+            // Firebase session truly expired — clear local data
             await removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
             await removeData(ASYNC_STORAGE_KEYS.USER_DATA);
           }

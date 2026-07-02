@@ -751,8 +751,6 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
               <Text style={styles.orderIdValue}>#{order.orderId?.slice(-6) || order.id?.slice(-6) || '—'}</Text>
 
-              <Text style={styles.orderIdValue}>#{String(order.orderId || order.id || '—').slice(-6)}</Text>
-
             </View>
           </View>
 
