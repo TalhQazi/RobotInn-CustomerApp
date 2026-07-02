@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
 import { COLORS, GRADIENTS } from '../../theme/colors';
-import { ordersAPI, areasAPI, usersAPI } from '../../services/api';
+import { ordersAPI, areasAPI, usersAPI, categoriesAPI } from '../../services/api';
 import { getCurrentLocationWithAddress } from '../../utils/location';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
@@ -44,6 +44,13 @@ const STATIC_AREAS = {
   'Gulberg Residencia': ['Tehzeeb Bakers', 'Coffee Planet'],
   'Bani Gala': ['KFC Bani Gala'],
 };
+
+const DEFAULT_CATEGORIES = [
+  { id: 'cat1', name: 'Groceries', icon: '🛒' },
+  { id: 'cat2', name: 'Fresh Bazaar', icon: '🥬' },
+  { id: 'cat3', name: 'Health & Beauty', icon: '💄' },
+  { id: 'cat4', name: 'Pharmacy', icon: '💊' }
+];
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SECTION_SIDE_PADDING = SPACING.md;
@@ -138,6 +145,10 @@ const DashboardScreen = ({ navigation }) => {
   const [showManualAddressInput,setShowManualAddressInput]= useState(false);
   const [addressLocationLoading,setAddressLocationLoading]= useState(false);
 
+  // ── Categories ─────────────────────────────────────────────────────────────
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+
   // ── Orders ────────────────────────────────────────────────────────────────
   const [recentOrders,  setRecentOrders]  = useState([]);
   const [currentOrders, setCurrentOrders] = useState([]);
@@ -210,6 +221,42 @@ const DashboardScreen = ({ navigation }) => {
     };
     fetchAreas();
   }, []);
+
+  // ── Fetch categories ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchCategories = async () => {
+      setCategoriesLoading(true);
+      try {
+        const response = await categoriesAPI.getAll();
+        if (response.success && Array.isArray(response.data) && response.data.length > 0) {
+          const activeCats = response.data.filter(c => c.active !== false);
+          setCategories(activeCats);
+        } else {
+          setCategories(DEFAULT_CATEGORIES);
+        }
+      } catch (err) {
+        console.log('❌ Categories fetch error:', err.message);
+        setCategories(DEFAULT_CATEGORIES);
+      } finally {
+        setCategoriesLoading(false);
+      }
+    };
+    fetchCategories();
+  }, []);
+
+  const handleCategoryPress = (categoryName) => {
+    if (!selectedArea) {
+      showThemedAlert({
+        title: 'Select Area First',
+        message: 'Please select your area first before choosing a category.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+      return;
+    }
+    setOrderItems((prev) => [...prev, newOrderItem(`${categoryName} items`)]);
+    // Scroll down to the order builder card
+    scrollViewRef.current?.scrollTo({ y: 450, animated: true });
+  };
 
   // ── Hero carousel init ────────────────────────────────────────────────────
   useEffect(() => {
@@ -605,6 +652,30 @@ const DashboardScreen = ({ navigation }) => {
           </View>
         </Animated.View>
         {/* ─── END HERO ─── */}
+
+        {/* ─── CATEGORIES ─── */}
+        <View style={styles.categoriesSection}>
+          <Text style={styles.categoriesTitle}>Categories</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesScrollContent}
+          >
+            {categories.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                style={styles.categoryCard}
+                onPress={() => handleCategoryPress(category.name)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.categoryIconContainer}>
+                  <Text style={styles.categoryIconText}>{category.icon}</Text>
+                </View>
+                <Text style={styles.categoryNameText} numberOfLines={1}>{category.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
         {/* ─── CURRENT ORDERS ─── */}
         {currentOrders.length > 0 && (
@@ -1274,6 +1345,15 @@ const styles = StyleSheet.create({
   paginationContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 14, gap: 6 },
   paginationDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C5EAE8' },
   paginationDotActive: { backgroundColor: '#2EC4B6', width: 20, borderRadius: 4 },
+
+  // ─── CATEGORIES ──────────────────────────────────────────────────────────
+  categoriesSection: { marginTop: 20, paddingHorizontal: 16 },
+  categoriesTitle: { fontSize: 20, fontWeight: '700', color: '#333', marginBottom: 12 },
+  categoriesScrollContent: { paddingRight: 16, gap: 14 },
+  categoryCard: { alignItems: 'center', width: 80 },
+  categoryIconContainer: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 3, borderWidth: 1, borderColor: '#f0f0f0' },
+  categoryIconText: { fontSize: 32 },
+  categoryNameText: { fontSize: 13, fontWeight: '600', color: '#4A5568', marginTop: 8, textAlign: 'center' },
 
   // ─── SLIDER ───────────────────────────────────────────────────────────────
   sliderSection: { marginTop: SPACING.md, paddingHorizontal: SECTION_SIDE_PADDING },

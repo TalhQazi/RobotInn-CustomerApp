@@ -578,6 +578,18 @@ export const areasAPI = {
   },
 };
 
+// Categories API
+export const categoriesAPI = {
+  getAll: async () => {
+    const snap = await firestore().collection('categories').get();
+    const data = [];
+    snap.forEach(doc => {
+      data.push({ id: doc.id, ...doc.data() });
+    });
+    return { success: true, data };
+  },
+};
+
 // Bills API
 export const billsAPI = {
   getMyBills: async () => {
@@ -859,6 +871,7 @@ export default {
   notifications: notificationsAPI,
   users: usersAPI,
   areas: areasAPI,
+  categories: categoriesAPI,
   bills: billsAPI,
   chat: chatAPI,
 };
