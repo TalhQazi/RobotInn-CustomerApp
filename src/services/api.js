@@ -579,17 +579,25 @@ export const uploadAPI = {
     const fileName = `${uid}-profile-${Date.now()}-${cleanName}`;
     const ref = storage().ref(`profiles/${fileName}`);
     
-    if (base64) {
-      await ref.putString(base64, 'base64', { contentType: type || 'image/jpeg' });
-    } else if (uri) {
-      await ref.putFile(uri, { contentType: type || 'image/jpeg' });
-    }
-    
     try {
+      if (uri) {
+        console.log('[UPLOAD] Starting URI putFile...', uri);
+        const cleanUri = uri.startsWith('file://') ? uri.replace('file://', '') : uri;
+        await ref.putFile(cleanUri, { contentType: type || 'image/jpeg' });
+        console.log('[UPLOAD] URI putFile succeeded.');
+      } else if (base64) {
+        console.log('[UPLOAD] Starting base64 putString...');
+        await ref.putString(base64, 'base64', { contentType: type || 'image/jpeg' });
+        console.log('[UPLOAD] base64 putString succeeded.');
+      }
+      
+      console.log('[UPLOAD] Fetching download URL...');
       const downloadURL = await ref.getDownloadURL();
+      console.log('[UPLOAD] Download URL fetched:', downloadURL);
       return { success: true, url: downloadURL, data: { url: downloadURL } };
     } catch (e) {
-      throw new Error(`[API-V2]: ${base64 ? 'Base64' : 'URI'} upload finished, but verification failed: ${e.message}`);
+      console.error('[UPLOAD ERROR]', e);
+      throw new Error(`Upload Failed: ${e.message}`);
     }
   },
 };

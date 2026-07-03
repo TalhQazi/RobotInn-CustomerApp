@@ -231,6 +231,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
                 </View>
               </Animated.View>
             </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
 

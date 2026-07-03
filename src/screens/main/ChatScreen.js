@@ -290,6 +290,7 @@ const ChatScreen = ({ navigation, route }) => {
           </View>
         )}
       </View>
+      </View>
 
       {/* Messages + input */}
       <KeyboardAvoidingView
