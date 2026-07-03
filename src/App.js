@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { ZegoCallInvitationDialog } from '@zegocloud/zego-uikit-prebuilt-call-rn';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar, LogBox } from 'react-native';
@@ -61,6 +62,7 @@ const App = () => {
             <Stack.Screen name="Auth" component={AuthNavigator} />
             <Stack.Screen name="Main" component={AppNavigator} />
           </Stack.Navigator>
+          <ZegoCallInvitationDialog />
         </NavigationContainer>
       </SafeAreaProvider>
     </NotificationUnreadProvider>

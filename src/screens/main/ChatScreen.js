@@ -11,14 +11,16 @@ import {
   ActivityIndicator,
   Alert,
   StatusBar,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { chatAPI, openRiderChat } from '../../services/api';
+import { chatAPI, openRiderChat, usersAPI } from '../../services/api';
 import { getData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
+import { ZegoSendCallInvitationButton } from '@zegocloud/zego-uikit-prebuilt-call-rn';
 
 function formatMsgTime(iso) {
   if (!iso) return '';
@@ -44,6 +46,7 @@ const ChatScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [myUserId, setMyUserId] = useState(null);
+  const [riderPhone, setRiderPhone] = useState(null);
   const flatListRef = useRef(null);
 
   useEffect(() => {
@@ -53,6 +56,18 @@ const ChatScreen = ({ navigation, route }) => {
       else if (user?.id) setMyUserId(String(user.id));
     })();
   }, []);
+
+  useEffect(() => {
+    if (participantId) {
+      usersAPI.getUserById(participantId).then(res => {
+        if (res.success && res.data && res.data.phone) {
+          setRiderPhone(res.data.phone);
+        }
+      }).catch(err => console.log('Failed to fetch rider phone', err));
+    }
+  }, [participantId]);
+
+  // Zego service handles the calling. We just need the UI button.
 
   const loadMessages = useCallback(
     async (convId, silent = false) => {
@@ -265,7 +280,15 @@ const ChatScreen = ({ navigation, route }) => {
               {orderCode ? `Order #${orderCode}` : 'Delivery chat'}
             </Text>
           </View>
-        </View>
+        {participantId && (
+          <View style={styles.callButton}>
+            <ZegoSendCallInvitationButton
+              invitees={[{ userID: String(participantId), userName: contactName || 'Rider' }]}
+              isVideoCall={false}
+              resourceID={"RobotInnCall"}
+            />
+          </View>
+        )}
       </View>
 
       {/* Messages + input */}
@@ -401,6 +424,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  callButton: {
+    padding: SPACING.xs,
+    marginLeft: SPACING.xs,
   },
   chatBody: {
     flex: 1,
