@@ -132,6 +132,10 @@ export const authAPI = {
     return { success: true, token: firebaseUser.uid, user: profile };
   },
 
+  sendPasswordResetEmail: async (email) => {
+    return await auth().sendPasswordResetEmail(email);
+  },
+
   logout: async () => {
     await auth().signOut();
     try {
@@ -274,7 +278,7 @@ export const authAPI = {
       }
 
       const otpData = otpSnap.data();
-      if (otpData.code !== code) {
+      if (!otpData || String(otpData.code).trim() !== String(code).trim()) {
         throw new Error('Invalid verification code.');
       }
 
@@ -295,15 +299,28 @@ export const authAPI = {
       const oldPassword = userData.password;
 
       // 3. Temporarily sign in user with their old password to update password in Firebase Auth
+      let authUpdateSuccess = false;
       if (oldPassword) {
         try {
           const userCredential = await auth().signInWithEmailAndPassword(email, oldPassword);
           await userCredential.user.updatePassword(newPassword);
+          authUpdateSuccess = true;
           // Sign out immediately after updating
           await auth().signOut();
         } catch (authErr) {
           console.warn('Temporary sign in / password update error in Firebase Auth:', authErr);
         }
+      }
+
+      if (!authUpdateSuccess) {
+        // Fallback: If we couldn't automatically sync the password with Firebase Auth,
+        // send the official Firebase reset email and instruct the user.
+        await auth().sendPasswordResetEmail(email);
+        
+        // Still clean up the OTP
+        await firestore().collection('otps').doc(email).delete();
+
+        throw new Error('For security reasons, your account requires a direct reset link. We have sent a secure password reset link to your email. Please click the link to set your password, then return here to login.');
       }
 
       // 4. Update the password field and temporary password in Firestore
@@ -485,6 +502,13 @@ export const usersAPI = {
     return { success: true, data: profile };
   },
 
+  getUserById: async (id) => {
+    const docSnap = await firestore().collection('users').doc(id).get();
+    if (!docSnap.exists) throw new Error('User not found');
+    return { success: true, data: docSnap.data() };
+  },
+
+
   updateProfile: async (userData) => {
     const firebaseUser = auth().currentUser;
     if (!firebaseUser) throw new Error('Authentication required');
@@ -550,19 +574,23 @@ export const uploadAPI = {
     const firebaseUser = auth().currentUser;
     const uid = firebaseUser ? firebaseUser.uid : 'anon';
     const cleanName = name ? name.replace(/[^a-zA-Z0-9.\-]/g, '_') : 'image.jpg';
-    const fileName = `profile_${uid}_${Date.now()}_${cleanName}`;
     
+    // Changing filename to start with uid to match potential Firebase Storage rule requirements
+    const fileName = `${uid}-profile-${Date.now()}-${cleanName}`;
     const ref = storage().ref(`profiles/${fileName}`);
     
-    if (uri) {
-      await ref.putFile(uri, { contentType: type || 'image/jpeg' });
-    } else if (base64) {
+    if (base64) {
       await ref.putString(base64, 'base64', { contentType: type || 'image/jpeg' });
+    } else if (uri) {
+      await ref.putFile(uri, { contentType: type || 'image/jpeg' });
     }
     
-    const downloadURL = await ref.getDownloadURL();
-
-    return { success: true, url: downloadURL, data: { url: downloadURL } };
+    try {
+      const downloadURL = await ref.getDownloadURL();
+      return { success: true, url: downloadURL, data: { url: downloadURL } };
+    } catch (e) {
+      throw new Error(`[API-V2]: ${base64 ? 'Base64' : 'URI'} upload finished, but verification failed: ${e.message}`);
+    }
   },
 };
 

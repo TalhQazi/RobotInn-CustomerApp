@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <application
       android:name=".MainApplication"
@@ -18,7 +20,7 @@
       android:supportsRtl="true">
       <meta-data
         android:name="com.google.android.geo.API_KEY"
-        android:value="AIzaSyAbCnEye8zcIw9J-_mK55liYpeTlWLTkRY" />
+        android:value="AIzaSyC8Dbpbk_IPYGw0gRKuSDLDsTmm8vs1xbc" />
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"

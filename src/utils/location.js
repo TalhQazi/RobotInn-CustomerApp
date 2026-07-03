@@ -209,12 +209,24 @@ async function reverseGeocodeWithBackup(lat, lng) {
       if (json.address.road) parts.push(json.address.road);
       if (json.address.neighbourhood) parts.push(json.address.neighbourhood);
       if (json.address.suburb) parts.push(json.address.suburb);
+      if (json.address.village) parts.push(json.address.village);
+      if (json.address.town) parts.push(json.address.town);
       if (json.address.city_district) parts.push(json.address.city_district);
       if (json.address.city) parts.push(json.address.city);
+      if (json.address.county) parts.push(json.address.county);
+      if (json.address.state) parts.push(json.address.state);
       if (json.address.postcode) parts.push(json.address.postcode);
       if (json.address.country) parts.push(json.address.country);
 
-      const address = parts.filter(Boolean).join(', ') || json.display_name;
+      let address = parts.filter(Boolean).join(', ');
+      
+      // If the built address is too brief (e.g., only postcode and country),
+      // fall back to the pre-formatted full display name
+      const componentCount = parts.filter(Boolean).length;
+      if (componentCount < 3 && json.display_name) {
+        address = json.display_name;
+      }
+      
       console.log('🏠 Address found:', address);
       return address;
     }

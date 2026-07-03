@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Image, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Image, Modal, ActivityIndicator, Animated } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
@@ -10,6 +10,7 @@ import { resetToAuth } from '../../navigation/navigationRef';
 import { useNotificationUnread } from '../../context/NotificationUnreadContext';
 import { useUserProfile, getAvatarUri, getUserInitial } from '../../context/UserProfileContext';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import ImageCropModal from '../../components/common/ImageCropModal';
 
 const ProfileScreen = ({ navigation }) => {
   const { unreadCount, refreshUnreadCount } = useNotificationUnread();
@@ -17,6 +18,31 @@ const ProfileScreen = ({ navigation }) => {
   const [aboutModalVisible, setAboutModalVisible] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null); // { uri, width, height }
+  const [cropModalVisible, setCropModalVisible] = useState(false);
+  const [toast, setToast] = useState({ visible: false, type: 'success', title: '', message: '' });
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastScale = useRef(new Animated.Value(0.85)).current;
+  const toastTimerRef = useRef(null);
+
+  const showToast = useCallback((type, title, message) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastOpacity.setValue(0);
+    toastScale.setValue(0.85);
+    setToast({ visible: true, type, title, message });
+    Animated.parallel([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+      Animated.spring(toastScale, { toValue: 1, friction: 8, tension: 65, useNativeDriver: true }),
+    ]).start();
+    toastTimerRef.current = setTimeout(() => hideToast(), 2500);
+  }, []);
+
+  const hideToast = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(toastOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(toastScale, { toValue: 0.85, duration: 200, useNativeDriver: true }),
+    ]).start(() => setToast(prev => ({ ...prev, visible: false })));
+  }, []);
 
   const avatarUri = getAvatarUri(user);
   const displayName = user?.name || 'User';
@@ -67,10 +93,10 @@ const ProfileScreen = ({ navigation }) => {
       const response = await launchImageLibrary({
         mediaType: 'photo',
         selectionLimit: 1,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        quality: 0.85,
         includeBase64: true,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        quality: 0.9,
       });
 
       if (response.didCancel) {
@@ -88,28 +114,67 @@ const ProfileScreen = ({ navigation }) => {
         return;
       }
 
-      setUploadingAvatar(true);
-      console.log('Starting profile picture update with base64...');
-
-      const mime = asset.type || 'image/jpeg';
-      const base64Url = `data:${mime};base64,${asset.base64}`;
-
-      console.log('Updating profile with base64 avatar...');
+      setSelectedImage({
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+        name: asset.fileName,
+        type: asset.type,
+      });
       
-      const profileRes = await usersAPI.updateProfile({ avatar: base64Url });
+      // Bypass cropper to test if it's the cropper's generated URI that fails
+      handleCropComplete({
+        uri: asset.uri,
+        base64: asset.base64,
+        name: asset.fileName,
+        type: asset.type
+      });
+      // setCropModalVisible(true);
+    } catch (error) {
+      console.error('Image picker error:', error);
+      Alert.alert('Error', 'Could not open photo library');
+    }
+  };
+
+  const handleCropComplete = async (croppedResult) => {
+    setCropModalVisible(false);
+    setUploadingAvatar(true);
+
+    try {
+      const uriToUpload = typeof croppedResult === 'string' ? croppedResult : croppedResult?.uri;
+      
+      if (!uriToUpload) {
+        throw new Error('Image cropping failed: No image URI returned');
+      }
+
+      console.log('Uploading cropped image directly to Firebase Storage...', uriToUpload);
+      const uploadRes = await uploadAPI.uploadImage({
+        uri: uriToUpload,
+        base64: croppedResult?.base64,
+        name: croppedResult.name || 'avatar.jpg',
+        type: croppedResult.type || 'image/jpeg',
+      });
+
+      if (!uploadRes.success || !uploadRes.url) {
+        throw new Error('Failed to upload image to storage');
+      }
+
+      const downloadUrl = uploadRes.url;
+      console.log('Updating profile with avatar URL:', downloadUrl);
+      const profileRes = await usersAPI.updateProfile({ avatar: downloadUrl });
       console.log('Profile update response:', profileRes);
       
       if (profileRes?.success) {
-        const updatedUser = profileRes?.data || { avatar: base64Url };
+        const updatedUser = profileRes?.data || { avatar: downloadUrl };
         await updateLocalUser(updatedUser);
         await refreshProfile();
-        Alert.alert('Success', 'Profile picture updated successfully');
+        showToast('success', 'Success', 'Profile picture updated successfully');
       } else {
         throw new Error(profileRes?.message || 'Failed to update profile');
       }
     } catch (error) {
       console.error('Profile picture upload error:', error);
-      Alert.alert('Error', error?.message || 'Could not update profile picture');
+      showToast('error', 'Error', error?.message || 'Could not update profile picture');
     } finally {
       setUploadingAvatar(false);
     }
@@ -306,6 +371,35 @@ We respect your privacy and protect your personal information. Your data is secu
 
 For any questions, please contact our support team."
       />
+
+      {/* Styled Toast */}
+      {toast.visible && (
+        <Modal transparent visible animationType="none" onRequestClose={hideToast}>
+          <TouchableOpacity style={styles.toastOverlay} activeOpacity={1} onPress={hideToast}>
+            <Animated.View style={[styles.toastCard, { opacity: toastOpacity, transform: [{ scale: toastScale }] }]}>
+              <View style={[styles.toastIconCircle, toast.type === 'success' ? styles.toastIconSuccess : styles.toastIconError]}>
+                <Ionicons name={toast.type === 'success' ? 'checkmark-sharp' : 'close'} size={28} color={COLORS.white} />
+              </View>
+              <Text style={styles.toastTitle}>{toast.title}</Text>
+              <Text style={styles.toastMessage}>{toast.message}</Text>
+              <TouchableOpacity style={[styles.toastButton, toast.type === 'success' ? styles.toastBtnSuccess : styles.toastBtnError]} onPress={hideToast}>
+                <Text style={styles.toastButtonText}>OK</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+      {/* Image Crop Modal */}
+      {selectedImage && (
+        <ImageCropModal
+          visible={cropModalVisible}
+          imageUri={selectedImage.uri}
+          imageWidth={selectedImage.width}
+          imageHeight={selectedImage.height}
+          onCancel={() => setCropModalVisible(false)}
+          onCrop={handleCropComplete}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -545,6 +639,73 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     lineHeight: 22,
+  },
+  // Toast Styles
+  toastOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  toastCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    paddingVertical: 32,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    width: '88%',
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  toastIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  toastIconSuccess: {
+    backgroundColor: COLORS.primary,
+  },
+  toastIconError: {
+    backgroundColor: '#FF6B6B',
+  },
+  toastTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  toastMessage: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  toastButton: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  toastBtnSuccess: {
+    backgroundColor: COLORS.primary,
+  },
+  toastBtnError: {
+    backgroundColor: '#FF6B6B',
+  },
+  toastButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

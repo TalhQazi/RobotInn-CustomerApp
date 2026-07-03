@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { getData, storeData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
-import { usersAPI } from '../services/api';
+import { usersAPI, ordersAPI } from '../services/api';
 
 const defaultStats = {
   totalOrders: 0,
@@ -34,11 +34,30 @@ export function UserProfileProvider({ children }) {
 
     await storeData(ASYNC_STORAGE_KEYS.USER_DATA, merged);
     setUser(merged);
-    setStats({
-      totalOrders: merged.totalOrders ?? 0,
-      activeOrders: merged.activeOrders ?? 0,
-      completedOrders: merged.completedOrders ?? 0,
-    });
+    
+    // Initialize Zego Service for VoIP calls
+    const userId = merged._id || merged.id;
+    if (userId) {
+      const { initZegoService } = require('../services/ZegoService');
+      initZegoService(userId, merged.name || merged.firstName || 'Customer');
+    }
+  }, []);
+
+  const computeStatsFromOrders = useCallback(async () => {
+    try {
+      const res = await ordersAPI.getMyOrders({ limit: 500 });
+      if (res.success && Array.isArray(res.data)) {
+        const orders = res.data;
+        const total = orders.length;
+        const activeStatuses = ['pending', 'accepted', 'processing', 'picked', 'picked up', 'in progress'];
+        const completedStatuses = ['delivered'];
+        const active = orders.filter(o => activeStatuses.includes(String(o.status || '').toLowerCase())).length;
+        const completed = orders.filter(o => completedStatuses.includes(String(o.status || '').toLowerCase())).length;
+        setStats({ totalOrders: total, activeOrders: active, completedOrders: completed });
+      }
+    } catch (error) {
+      console.error('computeStatsFromOrders error:', error);
+    }
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -47,23 +66,20 @@ export function UserProfileProvider({ children }) {
       const cached = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
       if (cached) {
         setUser(cached);
-        setStats({
-          totalOrders: cached.totalOrders ?? 0,
-          activeOrders: cached.activeOrders ?? 0,
-          completedOrders: cached.completedOrders ?? 0,
-        });
       }
 
       const response = await usersAPI.getProfile();
       if (response.success && response.data) {
         await applyProfileData(response.data);
       }
+
+      await computeStatsFromOrders();
     } catch (error) {
       console.error('refreshProfile error:', error);
     } finally {
       setLoadingProfile(false);
     }
-  }, [applyProfileData]);
+  }, [applyProfileData, computeStatsFromOrders]);
 
   useEffect(() => {
     refreshProfile();

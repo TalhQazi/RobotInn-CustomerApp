@@ -264,20 +264,6 @@ const OrderHistoryScreen = ({ navigation }) => {
         )}
         </Card>
       </TouchableOpacity>
-      {isPendingStatus(item.rawStatus) && (
-        <TouchableOpacity
-          style={styles.cancelOrderButton}
-          onPress={() => promptCancelOrder(item)}
-          activeOpacity={0.85}
-          disabled={cancellingOrderId === item.id}
-        >
-          {cancellingOrderId === item.id ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.cancelOrderText}>Cancel Order</Text>
-          )}
-        </TouchableOpacity>
-      )}
     </View>
   );
 
