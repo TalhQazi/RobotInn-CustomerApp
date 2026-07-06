@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Switch, Image, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Switch, Image, ScrollView, Modal, Animated } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
@@ -14,6 +14,7 @@ const SettingsScreen = ({ navigation }) => {
   const [user, setUser] = useState({ name: 'Fawad', email: 'fawad@example.com', profilePic: null });
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [language, setLanguage] = useState('English');
+  const [isPhotoModalVisible, setPhotoModalVisible] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -47,27 +48,22 @@ const SettingsScreen = ({ navigation }) => {
   };
 
   const handleProfilePicUpdate = () => {
-    Alert.alert('Change Profile Picture', 'Select an option', [
-      {
-        text: 'Use Sample Photo',
-        onPress: async () => {
-          const samplePic = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=500&q=80';
-          const updatedUser = { ...user, profilePic: samplePic };
-          setUser(updatedUser);
-          await storeData(ASYNC_STORAGE_KEYS.USER_DATA, updatedUser);
-        },
-      },
-      {
-        text: 'Remove Photo',
-        style: 'destructive',
-        onPress: async () => {
-          const updatedUser = { ...user, profilePic: null };
-          setUser(updatedUser);
-          await storeData(ASYNC_STORAGE_KEYS.USER_DATA, updatedUser);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    setPhotoModalVisible(true);
+  };
+
+  const setSamplePhoto = async () => {
+    const samplePic = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=500&q=80';
+    const updatedUser = { ...user, profilePic: samplePic };
+    setUser(updatedUser);
+    await storeData(ASYNC_STORAGE_KEYS.USER_DATA, updatedUser);
+    setPhotoModalVisible(false);
+  };
+
+  const removePhoto = async () => {
+    const updatedUser = { ...user, profilePic: null };
+    setUser(updatedUser);
+    await storeData(ASYNC_STORAGE_KEYS.USER_DATA, updatedUser);
+    setPhotoModalVisible(false);
   };
 
   return (
@@ -154,6 +150,40 @@ const SettingsScreen = ({ navigation }) => {
           </View>
         </Card>
       </ScrollView>
+
+      {/* Custom Bottom Sheet Modal for Profile Picture */}
+      <Modal
+        visible={isPhotoModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setPhotoModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setPhotoModalVisible(false)} />
+          <View style={styles.bottomSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Change Profile Picture</Text>
+            
+            <TouchableOpacity style={styles.sheetOption} onPress={setSamplePhoto} activeOpacity={0.7}>
+              <View style={[styles.sheetIconWrap, { backgroundColor: `${COLORS.primary}15` }]}>
+                <Ionicons name="image-outline" size={20} color={COLORS.primary} />
+              </View>
+              <Text style={styles.sheetOptionText}>Use Sample Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sheetOption} onPress={removePhoto} activeOpacity={0.7}>
+              <View style={[styles.sheetIconWrap, { backgroundColor: '#FEE2E2' }]}>
+                <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              </View>
+              <Text style={[styles.sheetOptionText, { color: '#EF4444' }]}>Remove Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setPhotoModalVisible(false)} activeOpacity={0.7}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -309,6 +339,68 @@ const styles = StyleSheet.create({
   },
   langChipTextActive: {
     color: COLORS.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bottomSheet: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: SPACING.lg,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.lg,
+    textAlign: 'center',
+  },
+  sheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  sheetIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  sheetOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  cancelBtn: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.background,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
   },
 });
 

@@ -10,7 +10,6 @@ import { resetToAuth } from '../../navigation/navigationRef';
 import { useNotificationUnread } from '../../context/NotificationUnreadContext';
 import { useUserProfile, getAvatarUri, getUserInitial } from '../../context/UserProfileContext';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import ImageCropModal from '../../components/common/ImageCropModal';
 
 const ProfileScreen = ({ navigation }) => {
   const { unreadCount, refreshUnreadCount } = useNotificationUnread();
@@ -19,7 +18,6 @@ const ProfileScreen = ({ navigation }) => {
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null); // { uri, width, height }
-  const [cropModalVisible, setCropModalVisible] = useState(false);
   const [toast, setToast] = useState({ visible: false, type: 'success', title: '', message: '' });
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const toastScale = useRef(new Animated.Value(0.85)).current;
@@ -94,9 +92,9 @@ const ProfileScreen = ({ navigation }) => {
         mediaType: 'photo',
         selectionLimit: 1,
         includeBase64: true,
-        maxWidth: 2048,
-        maxHeight: 2048,
-        quality: 0.9,
+        maxWidth: 500,
+        maxHeight: 500,
+        quality: 0.6,
       });
 
       if (response.didCancel) {
@@ -114,58 +112,37 @@ const ProfileScreen = ({ navigation }) => {
         return;
       }
 
-      setSelectedImage({
-        uri: asset.uri,
-        width: asset.width,
-        height: asset.height,
-        name: asset.fileName,
-        type: asset.type,
-      });
-      
-      // Bypass cropper to test if it's the cropper's generated URI that fails
-      handleCropComplete({
+      handleUpload({
         uri: asset.uri,
         base64: asset.base64,
         name: asset.fileName,
-        type: asset.type
+        type: asset.type,
       });
-      // setCropModalVisible(true);
     } catch (error) {
       console.error('Image picker error:', error);
       Alert.alert('Error', 'Could not open photo library');
     }
   };
 
-  const handleCropComplete = async (croppedResult) => {
-    setCropModalVisible(false);
+  const handleUpload = async (imageToUpload) => {
     setUploadingAvatar(true);
 
     try {
-      const uriToUpload = typeof croppedResult === 'string' ? croppedResult : croppedResult?.uri;
+      const uriToUpload = imageToUpload?.uri;
       
       if (!uriToUpload) {
-        throw new Error('Image cropping failed: No image URI returned');
+        throw new Error('Image selection failed: No image URI returned');
       }
 
-      console.log('Uploading cropped image directly to Firebase Storage...', uriToUpload);
-      const uploadRes = await uploadAPI.uploadImage({
-        uri: uriToUpload,
-        base64: croppedResult?.base64,
-        name: croppedResult.name || 'avatar.jpg',
-        type: croppedResult.type || 'image/jpeg',
-      });
+      const mime = imageToUpload.type || 'image/jpeg';
+      const base64Url = `data:${mime};base64,${imageToUpload.base64}`;
 
-      if (!uploadRes.success || !uploadRes.url) {
-        throw new Error('Failed to upload image to storage');
-      }
-
-      const downloadUrl = uploadRes.url;
-      console.log('Updating profile with avatar URL:', downloadUrl);
-      const profileRes = await usersAPI.updateProfile({ avatar: downloadUrl });
+      console.log('Updating profile with base64 avatar...');
+      const profileRes = await usersAPI.updateProfile({ avatar: base64Url });
       console.log('Profile update response:', profileRes);
       
       if (profileRes?.success) {
-        const updatedUser = profileRes?.data || { avatar: downloadUrl };
+        const updatedUser = profileRes?.data || { avatar: base64Url };
         await updateLocalUser(updatedUser);
         await refreshProfile();
         showToast('success', 'Success', 'Profile picture updated successfully');
@@ -227,7 +204,11 @@ const ProfileScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.modalBody}>
-            <Text style={styles.modalText}>{content}</Text>
+            {content.split('\n').map((paragraph, index) => (
+              <Text key={index} style={[styles.modalText, paragraph.trim() === '' ? { height: 8 } : { marginBottom: 4 }]}>
+                {paragraph}
+              </Text>
+            ))}
           </ScrollView>
         </View>
       </View>
@@ -344,11 +325,11 @@ const ProfileScreen = ({ navigation }) => {
         visible={aboutModalVisible}
         onClose={() => setAboutModalVisible(false)}
         title="About Us"
-        content="RobotInn is a revolutionary food delivery platform that brings you the best dining experience right to your doorstep. We connect you with top restaurants, food feeds, and robot stores in your area.
+        content={`RobotInn is a revolutionary food delivery platform that brings you the best dining experience right to your doorstep. We connect you with top restaurants, food feeds, and robot stores in your area.
 
 Our mission is to make food delivery faster, easier, and more enjoyable. With our advanced technology and dedicated team, we ensure your orders are delivered fresh and on time.
 
-Thank you for choosing RobotInn!"
+Thank you for choosing RobotInn!`}
       />
 
       {/* Terms & Policies Modal */}
@@ -356,7 +337,7 @@ Thank you for choosing RobotInn!"
         visible={termsModalVisible}
         onClose={() => setTermsModalVisible(false)}
         title="Terms & Policies"
-        content="Terms of Service:
+        content={`Terms of Service:
 
 By using RobotInn, you agree to our terms and conditions. We are committed to providing you with a safe and reliable food delivery service.
 
@@ -369,7 +350,7 @@ Privacy Policy:
 
 We respect your privacy and protect your personal information. Your data is securely stored and only used to improve your experience.
 
-For any questions, please contact our support team."
+For any questions, please contact our support team.`}
       />
 
       {/* Styled Toast */}
@@ -389,16 +370,6 @@ For any questions, please contact our support team."
           </TouchableOpacity>
         </Modal>
       )}
-      {/* Image Crop Modal */}
-      {selectedImage && (
-        <ImageCropModal
-          visible={cropModalVisible}
-          imageUri={selectedImage.uri}
-          imageWidth={selectedImage.width}
-          imageHeight={selectedImage.height}
-          onCancel={() => setCropModalVisible(false)}
-          onCrop={handleCropComplete}
-        />
       )}
     </SafeAreaView>
   );

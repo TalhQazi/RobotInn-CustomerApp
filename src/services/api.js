@@ -580,15 +580,16 @@ export const uploadAPI = {
     const ref = storage().ref(`profiles/${fileName}`);
     
     try {
-      if (uri) {
-        console.log('[UPLOAD] Starting URI putFile...', uri);
-        const cleanUri = uri.startsWith('file://') ? uri.replace('file://', '') : uri;
-        await ref.putFile(cleanUri, { contentType: type || 'image/jpeg' });
-        console.log('[UPLOAD] URI putFile succeeded.');
-      } else if (base64) {
+      if (base64) {
         console.log('[UPLOAD] Starting base64 putString...');
         await ref.putString(base64, 'base64', { contentType: type || 'image/jpeg' });
         console.log('[UPLOAD] base64 putString succeeded.');
+      } else if (uri) {
+        console.log('[UPLOAD] Starting URI putFile...', uri);
+        // Ensure URI has file:// prefix if it's a local absolute path
+        const finalUri = uri.startsWith('/') ? 'file://' + uri : uri;
+        await ref.putFile(finalUri, { contentType: type || 'image/jpeg' });
+        console.log('[UPLOAD] URI putFile succeeded.');
       }
       
       console.log('[UPLOAD] Fetching download URL...');

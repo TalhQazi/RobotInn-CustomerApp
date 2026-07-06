@@ -122,7 +122,7 @@ const ImageCropModal = ({ visible, imageUri, imageWidth, imageHeight, onCancel, 
         size: { width: Math.round(cropW), height: Math.round(cropH) },
         displaySize: { width: 400, height: 400 },
         resizeMode: 'cover',
-        includeBase64: false,
+        includeBase64: true,
       };
 
       const croppedResult = await ImageEditor.cropImage(imageUri, cropData);

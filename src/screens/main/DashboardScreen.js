@@ -76,9 +76,10 @@ const STORE_TYPES = {
 };
 
 // ─── Helper: build a blank order item ────────────────────────────────────────
-const newOrderItem = (text = '') => ({
+const newOrderItem = (text = '', category = 'Food') => ({
   id: Date.now().toString() + Math.random(),
   text,
+  category,
   editing: false,
   editText: text,
   storeType: null,       // STORE_TYPES.FEED | CUSTOM | ROBOT | null
@@ -253,7 +254,7 @@ const DashboardScreen = ({ navigation }) => {
       });
       return;
     }
-    setOrderItems((prev) => [...prev, newOrderItem(`${categoryName} items`)]);
+    setOrderItems((prev) => [...prev, newOrderItem(`${categoryName} items`, categoryName)]);
     // Scroll down to the order builder card
     scrollViewRef.current?.scrollTo({ y: 450, animated: true });
   };
@@ -365,14 +366,31 @@ const DashboardScreen = ({ navigation }) => {
   const filteredAreas = getAreasList().filter(a =>
     a.toLowerCase().includes(areaSearch.toLowerCase()));
 
-  const getStoresForArea = () => {
+  const getStoresForArea = (itemCategory) => {
     if (!selectedArea) return [];
     const area = areasData.find(a => a.name === selectedArea);
-    if (area?.stores?.length) return area.stores.map(s => s.name);
-    return STATIC_AREAS[selectedArea] || [];
+    if (area?.stores?.length) {
+      return area.stores
+        .filter(s => {
+          if (!itemCategory || itemCategory === 'Food') {
+            return s.type === 'Food' || s.type === 'Food Store' || !s.type;
+          }
+          return s.type === itemCategory;
+        })
+        .map(s => s.name);
+    }
+    
+    // Fallback to static food points
+    if (!itemCategory || itemCategory === 'Food') {
+      return STATIC_AREAS[selectedArea] || [];
+    }
+    return [];
   };
 
-  const storeOptions = getStoresForArea();
+  const currentPickerItem = storePicker.itemId ? orderItems.find(i => i.id === storePicker.itemId) : null;
+  const currentPickerCategory = currentPickerItem ? (currentPickerItem.category || 'Food') : 'Food';
+
+  const storeOptions = getStoresForArea(currentPickerCategory);
   const filteredStoreOptions = storeOptions.filter((store) =>
     store.toLowerCase().includes(storeSearch.toLowerCase())
   );
@@ -393,7 +411,7 @@ const DashboardScreen = ({ navigation }) => {
   // ── Order item CRUD ───────────────────────────────────────────────────────
   const addOrderItem = () => {
     if (!currentItem.trim()) return;
-    const newItem = newOrderItem(currentItem.trim());
+    const newItem = newOrderItem(currentItem.trim(), 'Food');
     setOrderItems(prev => [...prev, newItem]);
     setCurrentItem('');
   };
