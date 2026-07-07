@@ -38,6 +38,7 @@ const ChatScreen = ({ navigation, route }) => {
     participantId,
     contactName,
     orderCode,
+    riderPhone: routeRiderPhone,
   } = route.params || {};
 
   const [conversationId, setConversationId] = useState(initialConversationId || null);
@@ -46,7 +47,7 @@ const ChatScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [myUserId, setMyUserId] = useState(null);
-  const [riderPhone, setRiderPhone] = useState(null);
+  const [riderPhone, setRiderPhone] = useState(routeRiderPhone || null);
   const flatListRef = useRef(null);
 
   useEffect(() => {
@@ -281,13 +282,20 @@ const ChatScreen = ({ navigation, route }) => {
             </Text>
           </View>
         {participantId && (
-          <View style={styles.callButton}>
-            <ZegoSendCallInvitationButton
-              invitees={[{ userID: String(participantId), userName: contactName || 'Rider' }]}
-              isVideoCall={false}
-              resourceID={"RobotInnCall"}
-            />
-          </View>
+          <TouchableOpacity 
+            style={styles.callButton}
+            onPress={() => {
+              if (riderPhone) {
+                Linking.openURL(`tel:${riderPhone}`);
+              } else {
+                Alert.alert('Error', 'Rider phone number is not available.');
+              }
+            }}
+          >
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#F0F4F8', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="call" size={20} color={COLORS.primary} />
+            </View>
+          </TouchableOpacity>
         )}
       </View>
       </View>

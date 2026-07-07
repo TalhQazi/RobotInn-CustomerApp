@@ -11,7 +11,7 @@ import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
 const SETTINGS_STORAGE_KEY = 'app_settings';
 
 const SettingsScreen = ({ navigation }) => {
-  const [user, setUser] = useState({ name: 'Fawad', email: 'fawad@example.com', profilePic: null });
+  const [user, setUser] = useState({ name: 'Hasaan', email: 'Hasaan@example.com', profilePic: null });
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [language, setLanguage] = useState('English');
   const [isPhotoModalVisible, setPhotoModalVisible] = useState(false);
@@ -163,7 +163,7 @@ const SettingsScreen = ({ navigation }) => {
           <View style={styles.bottomSheet}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Change Profile Picture</Text>
-            
+
             <TouchableOpacity style={styles.sheetOption} onPress={setSamplePhoto} activeOpacity={0.7}>
               <View style={[styles.sheetIconWrap, { backgroundColor: `${COLORS.primary}15` }]}>
                 <Ionicons name="image-outline" size={20} color={COLORS.primary} />

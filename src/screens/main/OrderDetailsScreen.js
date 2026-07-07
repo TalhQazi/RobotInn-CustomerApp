@@ -83,12 +83,10 @@ function mapApiOrderToView(o) {
     dropoff: o.dropoff,
     createdAt: o.createdAt,
     date: o.createdAt,
-    riderId: o.riderId,
-    riderName: o.riderName,
-    riderPhone: o.riderPhone,
-    rider: o.riderId
-      ? { id: o.riderId, name: o.riderName, phone: o.riderPhone }
-      : null,
+    riderId: o.rider?.id || o.riderId,
+    riderName: o.rider?.name || o.riderName,
+    riderPhone: o.rider?.phone || o.riderPhone,
+    rider: o.rider || (o.riderId ? { id: o.riderId, name: o.riderName, phone: o.riderPhone } : null),
     estimatedArrivalTime: o.estimatedArrivalTime,
     estimatedDuration: o.estimatedDuration,
     minutesRemaining: o.minutesRemaining,
@@ -670,6 +668,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
                 participantId: String(riderId),
                 contactName: riderName,
                 orderCode: order.orderId,
+                riderPhone: riderPhone,
               });
             }}
           >
@@ -717,6 +716,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
                     participantId: String(riderId),
                     contactName: riderName,
                     orderCode: order.orderId,
+                    riderPhone: riderPhone,
                   });
                 }}
               >

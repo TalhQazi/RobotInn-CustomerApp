@@ -78,14 +78,21 @@ const CartScreen = ({ navigation }) => {
       
       for (const order of ordersToPlace) {
         // Format items for backend
-        const items = order.items.map(item => ({
-          name: item.text || item.itemName || item.name || 'Item',
-          quantity: item.quantity || 1,
-          price: item.price || 0,
-        }));
+        let orderTotal = 0;
+        const items = order.items.map(item => {
+          const itemPrice = parseFloat(item.price) || 0;
+          const itemQuantity = parseInt(item.quantity, 10) || 1;
+          orderTotal += itemPrice * itemQuantity;
+          return {
+            name: item.text || item.itemName || item.name || 'Item',
+            quantity: itemQuantity,
+            price: itemPrice,
+          };
+        });
 
         const orderData = {
           items,
+          total: orderTotal,
           pickup: order.store || 'Robot Store',
           dropoff: order.address || order.area || 'N/A',
           area: order.area || 'N/A',

@@ -240,7 +240,7 @@ const OrderHistoryScreen = ({ navigation }) => {
           </Text>
           <View style={styles.priceRow}>
             <Text style={styles.totalLabel}>Total:</Text>
-            <Text style={styles.totalAmount}>PKR {item.total}</Text>
+            <Text style={styles.totalAmount}>PKR {item.bill?.total || item.total}</Text>
           </View>
         </View>
 

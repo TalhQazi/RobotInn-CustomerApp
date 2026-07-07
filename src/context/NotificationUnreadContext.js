@@ -25,35 +25,6 @@ export function NotificationUnreadProvider({ children }) {
       .onSnapshot(async (snapshot) => {
         if (!snapshot) return;
         setUnreadCount(snapshot.size);
-
-        snapshot.docChanges().forEach(async (change) => {
-          if (change.type === 'added') {
-            const notif = change.doc.data();
-            const isRecent = new Date().getTime() - new Date(notif.createdAt).getTime() < 10000; // 10 seconds
-
-            if (isRecent) {
-              // Skip if user is currently looking at this conversation
-              if (notif.type === 'chat' && global.activeConversationId === notif.data?.conversationId) {
-                return;
-              }
-
-              try {
-                await notifee.displayNotification({
-                  title: notif.title || 'New Notification',
-                  body: notif.message || '',
-                  android: {
-                    channelId: 'default',
-                    smallIcon: 'ic_launcher',
-                    pressAction: { id: 'default' },
-                  },
-                  data: notif.data || {},
-                });
-              } catch (error) {
-                console.warn('Failed to display local notification:', error);
-              }
-            }
-          }
-        });
       }, (err) => {
         console.error('Error listening to notifications:', err);
       });
