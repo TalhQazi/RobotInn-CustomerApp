@@ -2,10 +2,15 @@
  * @format
  */
 
-import { AppRegistry } from 'react-native';
+import { AppRegistry, Alert } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
 import App from './src/App';
 import { name as appName } from './app.json';
+import AlertHelper from './src/utils/AlertHelper';
+
+const originalAlert = Alert.alert;
+AlertHelper.setOriginalAlert(originalAlert);
+Alert.alert = AlertHelper.alert;
 
 AppRegistry.registerComponent(appName, () => App);
 

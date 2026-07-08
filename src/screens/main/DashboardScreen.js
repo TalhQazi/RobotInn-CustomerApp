@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Modal, FlatList, Dimensions, Animated, ActivityIndicator,
+  TextInput, Modal, FlatList, Dimensions, Animated, ActivityIndicator, DeviceEventEmitter, Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -89,7 +89,27 @@ const newOrderItem = (text = '', category = 'Food') => ({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-const DashboardScreen = ({ navigation }) => {
+const getBrandLogo = (storeName) => {
+  if (!storeName) return null;
+  const name = storeName.toLowerCase();
+  if (name.includes('kfc')) return 'https://icon.horse/icon/kfc.com';
+  if (name.includes('pizza hut')) return 'https://icon.horse/icon/pizzahut.com';
+  if (name.includes('subway')) return 'https://icon.horse/icon/subway.com';
+  if (name.includes('mcdonald')) return 'https://icon.horse/icon/mcdonalds.com';
+  if (name.includes('burger king')) return 'https://icon.horse/icon/burgerking.com';
+  if (name.includes('domino')) return 'https://icon.horse/icon/dominos.com';
+  if (name.includes('starbucks')) return 'https://icon.horse/icon/starbucks.com';
+  if (name.includes('cheezious')) return 'https://icon.horse/icon/cheezious.com';
+  if (name.includes('hardee')) return 'https://icon.horse/icon/hardees.com';
+  if (name.includes('popeyes')) return 'https://icon.horse/icon/popeyes.com';
+  if (name.includes('tim hortons')) return 'https://icon.horse/icon/timhortons.com';
+  if (name.includes('baskin')) return 'https://icon.horse/icon/baskinrobbins.com';
+  if (name.includes('dunkin')) return 'https://icon.horse/icon/dunkindonuts.com';
+  if (name.includes('tehzeeb')) return 'https://icon.horse/icon/tehzeeb.com.pk';
+  return null;
+};
+
+const DashboardScreen = ({ navigation, route }) => {
   const [user, setUser] = useState({ name: 'Fawad' });
   const [cartCount, setCartCount] = useState(0);
   const [themedAlert, setThemedAlert] = useState({ visible: false, title: '', message: '', buttons: [] });
@@ -541,6 +561,7 @@ const DashboardScreen = ({ navigation }) => {
     try {
       const currentCart = await getData(ASYNC_STORAGE_KEYS.CART) || [];
       await storeData(ASYNC_STORAGE_KEYS.CART, [...currentCart, orderData]);
+      DeviceEventEmitter.emit('cartUpdated');
       setCartCount(currentCart.length + 1);
       // Reset form
       setOrderItems([]);
@@ -1244,12 +1265,22 @@ const DashboardScreen = ({ navigation }) => {
             <FlatList
               data={filteredStoreOptions}
               keyExtractor={item => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.modalItem} onPress={() => pickFeedStore(item)}>
-                  <Ionicons name="storefront-outline" size={18} color="#2EC4B6" style={{ marginRight: 10 }} />
-                  <Text style={styles.modalItemText}>{item}</Text>
-                </TouchableOpacity>
-              )}
+              renderItem={({ item }) => {
+                const logoUrl = getBrandLogo(item);
+                return (
+                  <TouchableOpacity style={styles.modalItem} onPress={() => pickFeedStore(item)}>
+                    {logoUrl ? (
+                      <Image 
+                        source={{ uri: logoUrl }} 
+                        style={{ width: 24, height: 24, marginRight: 10, borderRadius: 12, resizeMode: 'contain' }} 
+                      />
+                    ) : (
+                      <Ionicons name="storefront-outline" size={18} color="#FF0000" style={{ marginRight: 10 }} />
+                    )}
+                    <Text style={styles.modalItemText}>{item}</Text>
+                  </TouchableOpacity>
+                );
+              }}
               ListEmptyComponent={
                 <Text style={styles.emptyModalText}>
                   No stores found for "{storeSearch}" in {selectedArea}

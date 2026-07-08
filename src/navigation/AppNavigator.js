@@ -17,7 +17,7 @@ import OrderDetailsScreen from '../screens/main/OrderDetailsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import BillsScreen from '../screens/main/BillsScreen';
 import { COLORS } from '../theme/colors';
-import { Text, View, StyleSheet, Platform } from 'react-native';
+import { Text, View, StyleSheet, Platform, DeviceEventEmitter } from 'react-native';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getData } from '../storage/asyncStorage';
@@ -116,6 +116,9 @@ const MainTabs = () => {
     };
 
     fetchCartCount();
+
+    const subscription = DeviceEventEmitter.addListener('cartUpdated', fetchCartCount);
+    return () => subscription.remove();
   }, []);
 
   return (

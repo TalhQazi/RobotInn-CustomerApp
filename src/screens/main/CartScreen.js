@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Alert, DeviceEventEmitter } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../theme/colors';
@@ -53,6 +53,7 @@ const CartScreen = ({ navigation }) => {
     const allItems = updatedOrders.flatMap(order => order.items || []);
     setCartItems(allItems);
     await storeData(ASYNC_STORAGE_KEYS.CART, updatedOrders);
+    DeviceEventEmitter.emit('cartUpdated');
   };
 
   const handleOrderNow = async () => {
@@ -116,6 +117,7 @@ const CartScreen = ({ navigation }) => {
 
       // Clear cart
       await removeData(ASYNC_STORAGE_KEYS.CART);
+      DeviceEventEmitter.emit('cartUpdated');
       setCartItems([]);
       setCartOrders([]);
 

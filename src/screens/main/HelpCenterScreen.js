@@ -6,6 +6,7 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
@@ -87,12 +88,18 @@ const HelpCenterScreen = ({ navigation }) => {
         <View style={styles.contactSection}>
           <Text style={styles.sectionTitle}>Contact Support</Text>
           <View style={styles.contactCards}>
-            <TouchableOpacity style={styles.contactCard}>
+            <TouchableOpacity 
+              style={styles.contactCard}
+              onPress={() => Linking.openURL('tel:+923001234567')}
+            >
               <Ionicons name="call-outline" size={28} color={COLORS.primary} />
               <Text style={styles.contactCardTitle}>Call Us</Text>
               <Text style={styles.contactCardSubtitle}>+92 300 1234567</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.contactCard}>
+            <TouchableOpacity 
+              style={styles.contactCard}
+              onPress={() => Linking.openURL('mailto:support@robotinn.com')}
+            >
               <Ionicons name="mail-outline" size={28} color={COLORS.primary} />
               <Text style={styles.contactCardTitle}>Email Us</Text>
               <Text style={styles.contactCardSubtitle}>support@robotinn.com</Text>

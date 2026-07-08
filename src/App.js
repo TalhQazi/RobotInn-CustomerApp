@@ -19,6 +19,7 @@ import { navigationRef } from './navigation/navigationRef';
 import { COLORS } from './theme/colors';
 import { NotificationUnreadProvider } from './context/NotificationUnreadContext';
 import { initializeFirebaseMessaging, cleanupFirebaseMessaging } from './services/firebase';
+import GlobalAlert from './components/common/GlobalAlert';
 
 const Stack = createStackNavigator();
 
@@ -63,6 +64,7 @@ const App = () => {
             <Stack.Screen name="Main" component={AppNavigator} />
           </Stack.Navigator>
           <ZegoCallInvitationDialog />
+          <GlobalAlert />
         </NavigationContainer>
       </SafeAreaProvider>
     </NotificationUnreadProvider>
