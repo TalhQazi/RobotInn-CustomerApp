@@ -102,22 +102,13 @@ const LiveTrackingMap = ({
     if (canShowMap) {
       return (
         <>
-          {useStaticPreview ? (
-            <Image
-              source={{ uri: mapUrl }}
-              style={styles.mapImage}
-              resizeMode="cover"
-              onError={() => setStaticMapFailed(true)}
-            />
-          ) : (
-            <TrackingMapView
-              riderCoords={riderCoords}
-              destinationCoords={destinationCoords}
-              interactive={false}
-              preview
-              showDefaultRegion={showDefaultMap}
-            />
-          )}
+          <TrackingMapView
+            riderCoords={riderCoords}
+            destinationCoords={destinationCoords}
+            interactive={false}
+            preview
+            showDefaultRegion={showDefaultMap}
+          />
           {canOpenMap && (
             <View style={styles.openMapHint}>
               <Ionicons name="expand-outline" size={16} color="#fff" />

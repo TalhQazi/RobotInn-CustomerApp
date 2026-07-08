@@ -281,12 +281,14 @@ const ChatScreen = ({ navigation, route }) => {
               {orderCode ? `Order #${orderCode}` : 'Delivery chat'}
             </Text>
           </View>
-        {participantId && (
+        {!!participantId && (
           <TouchableOpacity 
             style={styles.callButton}
             onPress={() => {
-              if (riderPhone) {
-                Linking.openURL(`tel:${riderPhone}`);
+              if (riderPhone && riderPhone !== '—') {
+                Linking.openURL(`tel:${riderPhone}`).catch(err => {
+                  Alert.alert('Error', 'Could not open phone dialer.');
+                });
               } else {
                 Alert.alert('Error', 'Rider phone number is not available.');
               }
