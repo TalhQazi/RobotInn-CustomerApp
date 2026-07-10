@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Switch, Image, ScrollView, Modal, Animated } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Switch, Image, ScrollView, Modal, Animated, Alert } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
@@ -7,20 +7,20 @@ import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import { getData, storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
+import { useUserProfile } from '../../context/UserProfileContext';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { usersAPI } from '../../services/api';
 
 const SETTINGS_STORAGE_KEY = 'app_settings';
 
 const SettingsScreen = ({ navigation }) => {
-  const [user, setUser] = useState({ name: 'Hasaan', email: 'Hasaan@example.com', profilePic: null });
+  const { user, updateLocalUser } = useUserProfile();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [language, setLanguage] = useState('English');
   const [isPhotoModalVisible, setPhotoModalVisible] = useState(false);
 
   useEffect(() => {
     const load = async () => {
-      const userData = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
-      if (userData) setUser(userData);
-
       const settings = await getData(SETTINGS_STORAGE_KEY);
       if (settings) {
         if (typeof settings.notificationsEnabled === 'boolean') {
@@ -53,17 +53,54 @@ const SettingsScreen = ({ navigation }) => {
 
   const setSamplePhoto = async () => {
     const samplePic = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=500&q=80';
-    const updatedUser = { ...user, profilePic: samplePic };
-    setUser(updatedUser);
-    await storeData(ASYNC_STORAGE_KEYS.USER_DATA, updatedUser);
+    await updateLocalUser({ profilePic: samplePic, avatar: samplePic });
     setPhotoModalVisible(false);
   };
 
   const removePhoto = async () => {
-    const updatedUser = { ...user, profilePic: null };
-    setUser(updatedUser);
-    await storeData(ASYNC_STORAGE_KEYS.USER_DATA, updatedUser);
+    await updateLocalUser({ profilePic: null, avatar: null });
     setPhotoModalVisible(false);
+  };
+
+  const handleChooseFromGallery = async () => {
+    try {
+      const response = await launchImageLibrary({
+        mediaType: 'photo',
+        selectionLimit: 1,
+        includeBase64: true,
+        maxWidth: 500,
+        maxHeight: 500,
+        quality: 0.6,
+      });
+
+      if (response.didCancel) return;
+      if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage || 'Could not open photo library');
+        return;
+      }
+
+      const asset = response.assets?.[0];
+      if (!asset?.uri) {
+        Alert.alert('Error', 'Could not read the selected image');
+        return;
+      }
+
+      const mime = asset.type || 'image/jpeg';
+      const base64Url = `data:${mime};base64,${asset.base64}`;
+
+      const profileRes = await usersAPI.updateProfile({ avatar: base64Url });
+      
+      if (profileRes?.success) {
+        const updatedUser = profileRes?.data || { avatar: base64Url };
+        await updateLocalUser(updatedUser);
+        setPhotoModalVisible(false);
+      } else {
+        Alert.alert('Error', profileRes?.message || 'Failed to update profile');
+      }
+    } catch (error) {
+      console.error('Image picker error:', error);
+      Alert.alert('Error', 'Could not update profile picture');
+    }
   };
 
   return (
@@ -75,10 +112,10 @@ const SettingsScreen = ({ navigation }) => {
           <View style={styles.profileRow}>
             <TouchableOpacity onPress={handleProfilePicUpdate} style={styles.avatarWrapper} activeOpacity={0.9}>
               <View style={styles.avatar}>
-                {user.profilePic ? (
-                  <Image source={{ uri: user.profilePic }} style={styles.avatarImage} />
+                {(user?.avatar || user?.profilePic) ? (
+                  <Image source={{ uri: user?.avatar || user?.profilePic }} style={styles.avatarImage} />
                 ) : (
-                  <Text style={styles.avatarText}>{user.name ? user.name.charAt(0) : 'F'}</Text>
+                  <Text style={styles.avatarText}>{user?.name ? user.name.charAt(0).toUpperCase() : 'U'}</Text>
                 )}
                 <View style={styles.cameraBadge}>
                   <Ionicons name="camera" size={16} color={COLORS.white} />
@@ -87,8 +124,8 @@ const SettingsScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{user.name || 'User'}</Text>
-              <Text style={styles.profileEmail}>{user.email || ''}</Text>
+              <Text style={styles.profileName}>{user?.name || 'User'}</Text>
+              <Text style={styles.profileEmail}>{user?.email || ''}</Text>
               <TouchableOpacity onPress={handleProfilePicUpdate} style={styles.changePhotoBtn}>
                 <Ionicons name="image-outline" size={16} color={COLORS.primary} />
                 <Text style={styles.changePhotoText}>Change photo</Text>
@@ -163,6 +200,13 @@ const SettingsScreen = ({ navigation }) => {
           <View style={styles.bottomSheet}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Change Profile Picture</Text>
+
+            <TouchableOpacity style={styles.sheetOption} onPress={handleChooseFromGallery} activeOpacity={0.7}>
+              <View style={[styles.sheetIconWrap, { backgroundColor: `${COLORS.primary}15` }]}>
+                <Ionicons name="images-outline" size={20} color={COLORS.primary} />
+              </View>
+              <Text style={styles.sheetOptionText}>Choose from Gallery</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetOption} onPress={setSamplePhoto} activeOpacity={0.7}>
               <View style={[styles.sheetIconWrap, { backgroundColor: `${COLORS.primary}15` }]}>
