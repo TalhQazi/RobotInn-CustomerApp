@@ -20,7 +20,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { chatAPI, openRiderChat, usersAPI } from '../../services/api';
 import { getData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
-import { ZegoSendCallInvitationButton } from '@zegocloud/zego-uikit-prebuilt-call-rn';
+// import ZegoUIKitPrebuiltCallService from '@zegocloud/zego-uikit-prebuilt-call-rn';
 
 function formatMsgTime(iso) {
   if (!iso) return '';
@@ -47,6 +47,7 @@ const ChatScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [myUserId, setMyUserId] = useState(null);
+  const [myName, setMyName] = useState('Customer');
   const [riderPhone, setRiderPhone] = useState(routeRiderPhone || null);
   const flatListRef = useRef(null);
 
@@ -55,6 +56,7 @@ const ChatScreen = ({ navigation, route }) => {
       const user = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
       if (user?._id) setMyUserId(String(user._id));
       else if (user?.id) setMyUserId(String(user.id));
+      if (user?.name) setMyName(user.name);
     })();
   }, []);
 
@@ -256,6 +258,8 @@ const ChatScreen = ({ navigation, route }) => {
 
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
 
+  console.log("CustomerApp ChatScreen rendering Zego call button for rider ID:", participantId, "Name:", contactName);
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
@@ -277,26 +281,22 @@ const ChatScreen = ({ navigation, route }) => {
             <Text style={styles.headerName} numberOfLines={1}>
               {contactName || 'Rider'}
             </Text>
-            <Text style={styles.headerStatus} numberOfLines={1}>
-              {orderCode ? `Order #${orderCode}` : 'Delivery chat'}
-            </Text>
           </View>
         {!!participantId && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.callButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             onPress={() => {
-              if (riderPhone && riderPhone !== '—') {
-                Linking.openURL(`tel:${riderPhone}`).catch(err => {
-                  Alert.alert('Error', 'Could not open phone dialer.');
-                });
-              } else {
-                Alert.alert('Error', 'Rider phone number is not available.');
-              }
+              if (!participantId) return;
+              navigation.navigate('ZegoUIKitPrebuiltCallWaitingScreen', {
+                callerId: String(myUserId),
+                callerName: myName,
+                receiverId: String(participantId),
+                isIncoming: false,
+              });
             }}
           >
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#F0F4F8', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="call" size={20} color={COLORS.primary} />
-            </View>
+            <Ionicons name="call" size={24} color={COLORS.primary} />
           </TouchableOpacity>
         )}
       </View>

@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { ZegoCallInvitationDialog } from '@zegocloud/zego-uikit-prebuilt-call-rn';
+import { getData } from './storage/asyncStorage';
+import { ASYNC_STORAGE_KEYS } from './utils/constants';
+import { webrtcService } from './services/WebRTCService';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar, LogBox } from 'react-native';
@@ -18,6 +20,7 @@ import AppNavigator from './navigation/AppNavigator';
 import { navigationRef } from './navigation/navigationRef';
 import { COLORS } from './theme/colors';
 import { NotificationUnreadProvider } from './context/NotificationUnreadContext';
+import { UserProfileProvider } from './context/UserProfileContext';
 import { initializeFirebaseMessaging, cleanupFirebaseMessaging } from './services/firebase';
 import GlobalAlert from './components/common/GlobalAlert';
 
@@ -41,6 +44,26 @@ const App = () => {
     // Store navigation reference for use in notifications
     global.notificationNavigation = navigationRef;
 
+    // Subscribe to WebRTC incoming calls
+    const setupWebRTC = async () => {
+      const user = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
+      const uid = user?._id || user?.id;
+      if (uid) {
+        webrtcService.subscribeToIncomingCalls(String(uid));
+        webrtcService.setIncomingListener((callData) => {
+          if (navigationRef.current) {
+            navigationRef.current.navigate('ZegoUIKitPrebuiltCallWaitingScreen', {
+              isIncoming: true,
+              callId: callData.id,
+              callerName: callData.callerName || 'Unknown',
+              callerId: callData.callerId,
+            });
+          }
+        });
+      }
+    };
+    setupWebRTC();
+
     // Cleanup on app unmount
     return () => {
       cleanupFirebaseMessaging();
@@ -48,26 +71,28 @@ const App = () => {
   }, []);
 
   return (
-    <NotificationUnreadProvider>
-      <SafeAreaProvider>
-        <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
-        <NavigationContainer ref={navigationRef}>
-          <Stack.Navigator
-            initialRouteName="Splash"
-            screenOptions={{
-              headerShown: false,
-              gestureEnabled: true,
-            }}
-          >
-            <Stack.Screen name="Splash" component={SplashScreen} />
-            <Stack.Screen name="Auth" component={AuthNavigator} />
-            <Stack.Screen name="Main" component={AppNavigator} />
-          </Stack.Navigator>
-          <ZegoCallInvitationDialog />
-          <GlobalAlert />
-        </NavigationContainer>
-      </SafeAreaProvider>
-    </NotificationUnreadProvider>
+    <UserProfileProvider>
+      <NotificationUnreadProvider>
+        <SafeAreaProvider>
+          <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+          <NavigationContainer ref={navigationRef}>
+            <Stack.Navigator
+              initialRouteName="Splash"
+              screenOptions={{
+                headerShown: false,
+                gestureEnabled: true,
+              }}
+            >
+              <Stack.Screen name="Splash" component={SplashScreen} />
+              <Stack.Screen name="Auth" component={AuthNavigator} />
+              <Stack.Screen name="Main" component={AppNavigator} />
+            </Stack.Navigator>
+
+            <GlobalAlert />
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </NotificationUnreadProvider>
+    </UserProfileProvider>
   );
 };
 

@@ -36,10 +36,11 @@ export function UserProfileProvider({ children }) {
     setUser(merged);
     
     // Initialize Zego Service for VoIP calls
-    const userId = merged._id || merged.id;
+    const auth = require('@react-native-firebase/auth').default;
+    const userId = merged._id || merged.id || merged.uid || (auth().currentUser?.uid);
     if (userId) {
-      const { initZegoService } = require('../services/ZegoService');
-      initZegoService(userId, merged.name || merged.firstName || 'Customer');
+      // const { initZegoService } = require('../services/ZegoService');
+      // initZegoService(userId, merged.name || merged.firstName || 'Customer');
     }
   }, []);
 
@@ -66,6 +67,12 @@ export function UserProfileProvider({ children }) {
       const cached = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
       if (cached) {
         setUser(cached);
+        const auth = require('@react-native-firebase/auth').default;
+        const userId = cached._id || cached.id || cached.uid || (auth().currentUser?.uid);
+        if (userId) {
+          // const { initZegoService } = require('../services/ZegoService');
+          // initZegoService(userId, cached.name || cached.firstName || 'Customer');
+        }
       }
 
       const response = await usersAPI.getProfile();
@@ -82,7 +89,25 @@ export function UserProfileProvider({ children }) {
   }, [applyProfileData, computeStatsFromOrders]);
 
   useEffect(() => {
-    refreshProfile();
+    const auth = require('@react-native-firebase/auth').default;
+    const unsubscribe = auth().onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        console.log("UserProfileProvider: Auth state changed - logged in UID:", firebaseUser.uid);
+        refreshProfile();
+      } else {
+        console.log("UserProfileProvider: Auth state changed - logged out");
+        setUser(null);
+        setStats(defaultStats);
+        try {
+          // const { uninitZegoService } = require('../services/ZegoService');
+          // uninitZegoService();
+        } catch (e) {
+          console.warn("Zego uninit warning:", e);
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, [refreshProfile]);
 
   const updateLocalUser = useCallback(async (partialUser) => {

@@ -7,11 +7,15 @@ import {
   ScrollView,
   TouchableOpacity,
   Linking,
+  Alert,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
+import { getData } from '../../storage/asyncStorage';
+import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
 import Header from '../../components/common/Header';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+// import ZegoUIKitPrebuiltCallService from '@zegocloud/zego-uikit-prebuilt-call-rn';
 
 const HelpCenterScreen = ({ navigation }) => {
   const [expandedIndex, setExpandedIndex] = useState(null);
@@ -90,11 +94,21 @@ const HelpCenterScreen = ({ navigation }) => {
           <View style={styles.contactCards}>
             <TouchableOpacity 
               style={styles.contactCard}
-              onPress={() => Linking.openURL('tel:+923001234567')}
+              onPress={async () => {
+                const user = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
+                const uid = user?._id || user?.id || 'unknown';
+                const name = user?.name || 'Customer';
+                navigation.navigate('ZegoUIKitPrebuiltCallWaitingScreen', {
+                  callerId: String(uid),
+                  callerName: name,
+                  receiverId: 'support_admin',
+                  isIncoming: false,
+                });
+              }}
             >
               <Ionicons name="call-outline" size={28} color={COLORS.primary} />
               <Text style={styles.contactCardTitle}>Call Us</Text>
-              <Text style={styles.contactCardSubtitle}>+92 300 1234567</Text>
+              <Text style={styles.contactCardSubtitle}>Online Calling</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.contactCard}

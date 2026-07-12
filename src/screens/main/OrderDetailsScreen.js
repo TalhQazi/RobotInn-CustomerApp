@@ -7,6 +7,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -17,7 +19,7 @@ import LiveTrackingMap from '../../components/order/LiveTrackingMap';
 import ThemedAlert from '../../components/common/ThemedAlert';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
-import { ordersAPI } from '../../services/api';
+import { ordersAPI, usersAPI } from '../../services/api';
 import {
   geocodeAddress,
   getDrivingDistance,
@@ -94,6 +96,7 @@ function mapApiOrderToView(o) {
     riderLocation,
     distanceToCustomer: o.distanceToCustomer,
     location: o.location || null,
+    rating: o.rating || null,
   };
 }
 
@@ -151,6 +154,12 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   const [nowTick, setNowTick] = useState(Date.now());
   const simIntervalRef = useRef(null);
 
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [ratingScore, setRatingScore] = useState(0);
+  const [ratingReview, setRatingReview] = useState('');
+  const [submittingRating, setSubmittingRating] = useState(false);
+  const [riderRating, setRiderRating] = useState(null);
+
   const orderMongoId = order.id || initialOrder.id;
 
   const loadLiveOrder = useCallback(async () => {
@@ -201,6 +210,20 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     const poll = setInterval(loadLiveOrder, 5000);
     return () => clearInterval(poll);
   }, [isTracking, loadLiveOrder]);
+
+  useEffect(() => {
+    if (order.riderId) {
+      usersAPI.getUserById(order.riderId)
+        .then(res => {
+          if (res.success && res.data && res.data.rating != null) {
+            setRiderRating(res.data.rating);
+          }
+        })
+        .catch(err => console.log('Error fetching rider rating:', err));
+    } else {
+      setRiderRating(null);
+    }
+  }, [order.riderId]);
 
   useEffect(() => {
     if (!orderMongoId || !isTracking) {
@@ -326,6 +349,47 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   const riderId = order.rider?.id || order.riderId;
   const showChatWithRider =
     !!riderId && statusLower !== 'pending' && statusLower !== 'cancelled';
+
+  useEffect(() => {
+    if (isDelivered && !order.rating && order.riderId && !showRatingModal) {
+      setShowRatingModal(true);
+    }
+  }, [isDelivered, order.rating, order.riderId]);
+
+  const handleSubmitRating = async () => {
+    if (ratingScore === 0) {
+      showThemedAlert({
+        title: 'Rating Required',
+        message: 'Please select a star rating.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+      return;
+    }
+
+    setSubmittingRating(true);
+    try {
+      await ordersAPI.submitOrderRating(orderMongoId, order.riderId, ratingScore, ratingReview.trim());
+      setOrder(prev => ({
+        ...prev,
+        rating: { score: ratingScore, review: ratingReview.trim() }
+      }));
+      setShowRatingModal(false);
+      showThemedAlert({
+        title: 'Thank You!',
+        message: 'Your feedback helps us improve our service.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+    } catch (error) {
+      console.error('Rating submission failed:', error);
+      showThemedAlert({
+        title: 'Submission Failed',
+        message: 'Unable to submit your rating. Please try again.',
+        buttons: [{ text: 'OK', style: 'cancel' }]
+      });
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
 
   const showThemedAlert = ({ title, message, buttons = [] }) => {
     setThemedAlert({ visible: true, title, message, buttons });
@@ -689,10 +753,12 @@ const OrderDetailsScreen = ({ navigation, route }) => {
               </View>
               <Text style={styles.cardTitle}>Rider Details</Text>
             </View>
-            {/* <View style={styles.riderRating}>
-              <Ionicons name="star" size={14} color="#FFD700" />
-              <Text style={styles.riderRatingText}>4.9</Text>
-            </View> */}
+            {riderRating !== null && (
+              <View style={styles.riderRating}>
+                <Ionicons name="star" size={14} color="#FFD700" />
+                <Text style={styles.riderRatingText}>{riderRating > 0 ? riderRating.toFixed(1) : '-'}</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.riderInfoRow}>
@@ -837,6 +903,65 @@ const OrderDetailsScreen = ({ navigation, route }) => {
         buttons={themedAlert.buttons}
         onRequestClose={hideThemedAlert}
       />
+
+      <Modal
+        visible={showRatingModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowRatingModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.ratingModalContent}>
+            <View style={styles.ratingHeader}>
+              <Text style={styles.ratingTitle}>Rate your Delivery</Text>
+              <TouchableOpacity onPress={() => setShowRatingModal(false)} style={styles.closeModalBtn}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.riderAvatarModal}>
+              <Text style={styles.riderAvatarTextModal}>
+                {riderName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <Text style={styles.ratingRiderName}>How was your delivery by {riderName}?</Text>
+
+            <View style={styles.starsContainer}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <TouchableOpacity key={star} onPress={() => setRatingScore(star)}>
+                  <Ionicons
+                    name={star <= ratingScore ? 'star' : 'star-outline'}
+                    size={40}
+                    color={star <= ratingScore ? '#FFD700' : '#E2E8F0'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={styles.reviewInput}
+              placeholder="Write an optional review..."
+              placeholderTextColor="#94A3B8"
+              multiline
+              numberOfLines={4}
+              value={ratingReview}
+              onChangeText={setRatingReview}
+            />
+
+            <TouchableOpacity
+              style={[styles.submitRatingBtn, submittingRating && styles.submitRatingBtnDisabled]}
+              onPress={handleSubmitRating}
+              disabled={submittingRating}
+            >
+              {submittingRating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.submitRatingText}>Submit Rating</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1314,6 +1439,94 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  ratingModalContent: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.xl,
+    alignItems: 'center',
+  },
+  ratingHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+    position: 'relative',
+  },
+  ratingTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  closeModalBtn: {
+    position: 'absolute',
+    right: 0,
+    top: -4,
+    padding: 4,
+  },
+  riderAvatarModal: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#2EC4B6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+  },
+  riderAvatarTextModal: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  ratingRiderName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#475569',
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: SPACING.xl,
+  },
+  reviewInput: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    fontSize: 15,
+    color: '#1E293B',
+    textAlignVertical: 'top',
+    minHeight: 100,
+    marginBottom: SPACING.xl,
+  },
+  submitRatingBtn: {
+    width: '100%',
+    backgroundColor: '#2EC4B6',
+    paddingVertical: 16,
+    borderRadius: BORDER_RADIUS.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitRatingBtnDisabled: {
+    opacity: 0.7,
+  },
+  submitRatingText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

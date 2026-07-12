@@ -16,7 +16,6 @@ const SETTINGS_STORAGE_KEY = 'app_settings';
 const SettingsScreen = ({ navigation }) => {
   const { user, updateLocalUser } = useUserProfile();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [language, setLanguage] = useState('English');
   const [isPhotoModalVisible, setPhotoModalVisible] = useState(false);
 
   useEffect(() => {
@@ -26,7 +25,6 @@ const SettingsScreen = ({ navigation }) => {
         if (typeof settings.notificationsEnabled === 'boolean') {
           setNotificationsEnabled(settings.notificationsEnabled);
         }
-        if (settings.language) setLanguage(settings.language);
       }
     };
 
@@ -39,12 +37,7 @@ const SettingsScreen = ({ navigation }) => {
 
   const handleToggleNotifications = async (value) => {
     setNotificationsEnabled(value);
-    await persistSettings({ notificationsEnabled: value, language });
-  };
-
-  const handleSetLanguage = async (nextLanguage) => {
-    setLanguage(nextLanguage);
-    await persistSettings({ notificationsEnabled: notificationsEnabled, language: nextLanguage });
+    await persistSettings({ notificationsEnabled: value });
   };
 
   const handleProfilePicUpdate = () => {
@@ -153,37 +146,6 @@ const SettingsScreen = ({ navigation }) => {
               trackColor={{ false: '#CBD5E1', true: `${COLORS.primary}55` }}
               thumbColor={notificationsEnabled ? COLORS.primary : '#94A3B8'}
             />
-          </View>
-        </Card>
-
-        <Card style={styles.settingCard}>
-          <View style={styles.settingRowTop}>
-            <View style={styles.settingLeft}>
-              <View style={styles.settingIconWrap}>
-                <Ionicons name="language-outline" size={20} color={COLORS.secondary} />
-              </View>
-              <View>
-                <Text style={styles.settingTitle}>Language</Text>
-                <Text style={styles.settingSub}>Choose your preferred language</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.languageRow}>
-            <TouchableOpacity
-              style={[styles.langChip, language === 'English' && styles.langChipActive]}
-              onPress={() => handleSetLanguage('English')}
-              activeOpacity={0.9}
-            >
-              <Text style={[styles.langChipText, language === 'English' && styles.langChipTextActive]}>English</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.langChip, language === 'Urdu' && styles.langChipActive]}
-              onPress={() => handleSetLanguage('Urdu')}
-              activeOpacity={0.9}
-            >
-              <Text style={[styles.langChipText, language === 'Urdu' && styles.langChipTextActive]}>Urdu</Text>
-            </TouchableOpacity>
           </View>
         </Card>
       </ScrollView>
@@ -357,32 +319,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
-  },
-  languageRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-  },
-  langChip: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.sm,
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-  },
-  langChipActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: `${COLORS.primary}12`,
-  },
-  langChipText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '700',
-  },
-  langChipTextActive: {
-    color: COLORS.primary,
   },
   modalOverlay: {
     flex: 1,

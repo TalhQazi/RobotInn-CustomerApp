@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
+
 import DashboardScreen from '../screens/main/DashboardScreen';
 import OrderScreen from '../screens/main/OrderScreen';
 import CartScreen from '../screens/main/CartScreen';
@@ -10,6 +11,7 @@ import MessagesScreen from '../screens/main/MessagesScreen';
 import NotificationScreen from '../screens/main/NotificationScreen';
 import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
 import ChatScreen from '../screens/main/ChatScreen';
+
 import AddItemsScreen from '../screens/main/AddItemsScreen';
 import MyAddressesScreen from '../screens/main/MyAddressesScreen';
 import HelpCenterScreen from '../screens/main/HelpCenterScreen';
@@ -122,7 +124,6 @@ const MainTabs = () => {
   }, []);
 
   return (
-    <UserProfileProvider>
     <NotificationUnreadProvider>
     <Tab.Navigator
       screenOptions={{
@@ -170,9 +171,10 @@ const MainTabs = () => {
       />
     </Tab.Navigator>
     </NotificationUnreadProvider>
-    </UserProfileProvider>
   );
 };
+
+import { CustomWaitingScreen, CustomInCallScreen } from '../screens/main/CustomZegoCallScreen';
 
 const AppNavigator = () => {
   return (
@@ -181,6 +183,8 @@ const AppNavigator = () => {
       <Stack.Screen name="AddOrder" component={OrderScreen} />
       <Stack.Screen name="AddItems" component={AddItemsScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="ZegoUIKitPrebuiltCallWaitingScreen" component={CustomWaitingScreen} />
+      <Stack.Screen name="ZegoUIKitPrebuiltCallInCallScreen" component={CustomInCallScreen} />
     </Stack.Navigator>
   );
 };

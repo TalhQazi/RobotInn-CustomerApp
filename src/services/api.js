@@ -1,4 +1,4 @@
-import auth from '@react-native-firebase/auth';
+import auth, { GoogleAuthProvider } from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
@@ -159,7 +159,7 @@ export const authAPI = {
         throw new Error('Failed to obtain Google ID Token.');
       }
 
-      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
+      const googleCredential = GoogleAuthProvider.credential(idToken);
       const userCredential = await auth().signInWithCredential(googleCredential);
       const firebaseUser = userCredential.user;
 
@@ -363,6 +363,38 @@ export const productsAPI = {
 
 // Orders APIs
 export const ordersAPI = {
+  submitOrderRating: async (orderId, riderId, rating, reviewText) => {
+    const orderRef = firestore().collection('orders').doc(orderId);
+    const riderRef = firestore().collection('users').doc(riderId);
+
+    await firestore().runTransaction(async (transaction) => {
+      const riderDoc = await transaction.get(riderRef);
+      if (!riderDoc.exists) throw new Error("Rider does not exist!");
+
+      const riderData = riderDoc.data();
+      const currentRating = riderData.rating || 0;
+      const ratingCount = riderData.ratingCount || 0;
+
+      const newCount = ratingCount + 1;
+      const newRating = ((currentRating * ratingCount) + rating) / newCount;
+
+      transaction.update(orderRef, {
+        rating: {
+          score: rating,
+          review: reviewText || '',
+          createdAt: new Date().toISOString()
+        }
+      });
+
+      transaction.update(riderRef, {
+        rating: newRating,
+        ratingCount: newCount
+      });
+    });
+
+    return { success: true };
+  },
+
   create: async (orderData) => {
     const firebaseUser = auth().currentUser;
     if (!firebaseUser) throw new Error('Authentication required');
