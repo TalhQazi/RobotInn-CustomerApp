@@ -113,7 +113,7 @@ export async function getDrivingDistance(origin, destination) {
       };
     }
   } catch (error) {
-    console.error('getDrivingDistance error:', error);
+    console.warn('getDrivingDistance error:', error);
   }
 
   return null;

@@ -176,6 +176,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     try {
       const res = await ordersAPI.getById(orderMongoId);
       if (res.success && res.data) {
+        console.log('ORDER DATA:', JSON.stringify(res.data, null, 2));
         setOrder(mapApiOrderToView(res.data));
       }
     } catch (error) {

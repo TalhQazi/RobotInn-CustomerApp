@@ -121,6 +121,7 @@ class WebRTCService {
 
     // Listen for answer
     this.callDocListener = callDoc.onSnapshot((snapshot) => {
+      if (!snapshot) return;
       const data = snapshot.data();
       if (!this.pc?.currentRemoteDescription && data?.answer) {
         const answerDescription = new RTCSessionDescription(data.answer);
@@ -135,17 +136,22 @@ class WebRTCService {
       } else if (data?.status === 'ended') {
         this.endCall();
       }
+    }, (error) => {
+      console.error('Error in callDocListener:', error);
     });
 
     // Listen for remote ICE candidates
     const receiverCandidates = callDoc.collection('receiverCandidates');
     receiverCandidates.onSnapshot((snapshot) => {
+      if (!snapshot) return;
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const candidate = new RTCIceCandidate(change.doc.data());
           this.pc?.addIceCandidate(candidate);
         }
       });
+    }, (error) => {
+      console.error('Error in receiverCandidates listener:', error);
     });
   }
 
@@ -187,19 +193,25 @@ class WebRTCService {
     // Listen for remote ICE candidates
     const callerCandidates = callDoc.collection('callerCandidates');
     callerCandidates.onSnapshot((snapshot) => {
+      if (!snapshot) return;
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const candidate = new RTCIceCandidate(change.doc.data());
           this.pc?.addIceCandidate(candidate);
         }
       });
+    }, (error) => {
+      console.error('Error in callerCandidates listener:', error);
     });
 
     this.callDocListener = callDoc.onSnapshot((snapshot) => {
+      if (!snapshot) return;
       const data = snapshot.data();
       if (data?.status === 'ended') {
         this.endCall();
       }
+    }, (error) => {
+      console.error('Error in callDocListener:', error);
     });
   }
 
@@ -243,6 +255,7 @@ class WebRTCService {
       .where('receiverId', '==', String(myUserId))
       .where('status', '==', 'ringing')
       .onSnapshot((snapshot) => {
+        if (!snapshot) return;
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const data = change.doc.data();
@@ -251,6 +264,8 @@ class WebRTCService {
             }
           }
         });
+      }, (error) => {
+        console.error('Error in global incoming call listener:', error);
       });
   }
 }

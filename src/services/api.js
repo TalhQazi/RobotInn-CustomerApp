@@ -5,6 +5,11 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { getData, storeData, removeData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 
+const checkExists = (snap) => {
+  if (!snap) return false;
+  return typeof snap.exists === 'function' ? snap.exists() : !!snap.exists;
+};
+
 // Configure Google Sign-In
 GoogleSignin.configure({
   webClientId: '301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com',
@@ -29,7 +34,7 @@ export const authAPI = {
         const userCredential = await auth().signInWithEmailAndPassword(email, password);
         firebaseUser = userCredential.user;
         const existingSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
-        if (existingSnap.exists) {
+        if (checkExists(existingSnap)) {
           existingProfile = existingSnap.data();
         }
       } else {
@@ -87,11 +92,11 @@ export const authAPI = {
     // Fetch profile details
     const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
     
-    if (userSnap.exists) {
+    if (checkExists(userSnap)) {
       await firestore().collection('users').doc(firebaseUser.uid).update({ password });
     }
     
-    if (!userSnap.exists) {
+    if (!checkExists(userSnap)) {
       // Create a default profile if not exists
       const defaultProfile = {
         id: firebaseUser.uid,
@@ -165,7 +170,7 @@ export const authAPI = {
 
       const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
       let profile;
-      if (!userSnap.exists) {
+      if (!checkExists(userSnap)) {
         profile = {
           id: firebaseUser.uid,
           uid: firebaseUser.uid,
@@ -273,7 +278,7 @@ export const authAPI = {
     try {
       // 1. Check OTP in Firestore
       const otpSnap = await firestore().collection('otps').doc(email).get();
-      if (!otpSnap.exists) {
+      if (!checkExists(otpSnap)) {
         throw new Error('Verification code has not been sent or has expired.');
       }
 
@@ -356,7 +361,7 @@ export const productsAPI = {
 
   getById: async (id) => {
     const productSnap = await firestore().collection('products').doc(id).get();
-    if (!productSnap.exists) throw new Error('Product not found');
+    if (!checkExists(productSnap)) throw new Error('Product not found');
     return { success: true, data: { id: productSnap.id, ...productSnap.data() } };
   },
 };
@@ -369,14 +374,6 @@ export const ordersAPI = {
 
     await firestore().runTransaction(async (transaction) => {
       const riderDoc = await transaction.get(riderRef);
-      if (!riderDoc.exists) throw new Error("Rider does not exist!");
-
-      const riderData = riderDoc.data();
-      const currentRating = riderData.rating || 0;
-      const ratingCount = riderData.ratingCount || 0;
-
-      const newCount = ratingCount + 1;
-      const newRating = ((currentRating * ratingCount) + rating) / newCount;
 
       transaction.update(orderRef, {
         rating: {
@@ -386,10 +383,22 @@ export const ordersAPI = {
         }
       });
 
-      transaction.update(riderRef, {
-        rating: newRating,
-        ratingCount: newCount
-      });
+      if (checkExists(riderDoc)) {
+        const riderData = riderDoc.data();
+        if (riderData) {
+          const currentRating = riderData.rating || 0;
+          const ratingCount = riderData.ratingCount || 0;
+          const newCount = ratingCount + 1;
+          const newRating = ((currentRating * ratingCount) + rating) / newCount;
+
+          transaction.update(riderRef, {
+            rating: newRating,
+            ratingCount: newCount
+          });
+        }
+      } else {
+        console.warn(`Rider profile ${riderId} does not exist. Skipping rider rating aggregation.`);
+      }
     });
 
     return { success: true };
@@ -451,7 +460,7 @@ export const ordersAPI = {
 
   getById: async (id) => {
     const orderSnap = await firestore().collection('orders').doc(id).get();
-    if (!orderSnap.exists) throw new Error('Order not found');
+    if (!checkExists(orderSnap)) throw new Error('Order not found');
     return { success: true, data: { id: orderSnap.id, ...orderSnap.data() } };
   },
 
@@ -536,7 +545,7 @@ export const usersAPI = {
 
   getUserById: async (id) => {
     const docSnap = await firestore().collection('users').doc(id).get();
-    if (!docSnap.exists) throw new Error('User not found');
+    if (!checkExists(docSnap)) throw new Error('User not found');
     return { success: true, data: docSnap.data() };
   },
 
@@ -682,7 +691,7 @@ export const billsAPI = {
 
   getBillById: async (billId) => {
     const orderSnap = await firestore().collection('orders').doc(billId).get();
-    if (!orderSnap.exists) throw new Error('Bill not found');
+    if (!checkExists(orderSnap)) throw new Error('Bill not found');
     const order = orderSnap.data();
     return { success: true, data: { id: orderSnap.id, orderId: order.orderId, ...order.bill } };
   },
@@ -741,7 +750,7 @@ export const chatAPI = {
       let participantType = 'rider';
       if (participantId) {
         const userSnap = await firestore().collection('users').doc(participantId).get();
-        if (userSnap.exists) {
+        if (checkExists(userSnap)) {
           const userData = userSnap.data();
           participantName = userData?.name || 'Rider';
           participantType = userData?.type || 'rider';
@@ -872,13 +881,13 @@ export const chatAPI = {
 
     try {
       const convDoc = await firestore().collection('conversations').doc(conversationId).get();
-      if (convDoc.exists) {
+      if (checkExists(convDoc)) {
         const convData = convDoc.data();
         const participants = convData?.participants || [];
         const recipientId = participants.find(p => p !== firebaseUser.uid);
         if (recipientId) {
           const senderDoc = await firestore().collection('users').doc(firebaseUser.uid).get();
-          const senderName = senderDoc.exists ? (senderDoc.data()?.name || 'User') : 'User';
+          const senderName = checkExists(senderDoc) ? (senderDoc.data()?.name || 'User') : 'User';
 
           await firestore().collection('notifications').add({
             userId: recipientId,
