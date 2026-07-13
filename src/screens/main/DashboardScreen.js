@@ -175,7 +175,10 @@ const DashboardScreen = ({ navigation, route }) => {
   const [currentOrders, setCurrentOrders] = useState([]);
   const [cancellingOrderId, setCancellingOrderId] = useState(null);
 
-  const isPendingOrder = (status) => String(status || '').toLowerCase().trim() === 'pending';
+  const isPendingOrder = (status) => {
+    const s = String(status || '').toLowerCase().trim();
+    return s !== 'delivered' && s !== 'completed' && s !== 'cancelled';
+  };
 
   const cancelOrder = async (order) => {
     const orderId = order.id || order.orderId || order._id;
@@ -756,10 +759,12 @@ const DashboardScreen = ({ navigation, route }) => {
                     {(order.riderName || order.rider?.name) && (
                       <View style={styles.riderInfoContainer}>
                         <Ionicons name="person-circle-outline" size={18} color="#2EC4B6" />
-                        <Text style={styles.riderName}>Rider: {order.riderName || order.rider?.name}</Text>
-                        {(order.riderPhone || order.rider?.phone) && (
-                          <Text style={styles.riderPhone}>({order.riderPhone || order.rider?.phone})</Text>
-                        )}
+                        <Text style={styles.riderName} numberOfLines={1} ellipsizeMode="tail">
+                          Rider: {order.riderName || order.rider?.name}
+                          {(order.riderPhone || order.rider?.phone) && (
+                            <Text style={styles.riderPhone}> ({order.riderPhone || order.rider?.phone})</Text>
+                          )}
+                        </Text>
                       </View>
                     )}
                     <View style={styles.currentOrderItems}>
@@ -1534,8 +1539,8 @@ const styles = StyleSheet.create({
   currentOrderId: { fontSize: 16, fontWeight: '700', color: '#333' },
   currentOrderDate: { fontSize: 13, color: '#666' },
   riderInfoContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F7FA', padding: SPACING.sm, borderRadius: 10, marginBottom: SPACING.sm },
-  riderName: { fontSize: 14, fontWeight: '600', color: '#333', marginLeft: SPACING.xs },
-  riderPhone: { fontSize: 13, color: '#666', marginLeft: SPACING.xs },
+  riderName: { flex: 1, fontSize: 14, fontWeight: '600', color: '#333', marginLeft: SPACING.xs },
+  riderPhone: { fontSize: 13, color: '#666', fontWeight: 'normal' },
   currentOrderItems: { marginBottom: SPACING.sm },
   currentOrderItemsLabel: { fontSize: 13, color: '#666', marginBottom: 2 },
   currentOrderItemsText: { fontSize: 14, color: '#333', fontWeight: '500' },

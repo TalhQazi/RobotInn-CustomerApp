@@ -201,6 +201,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
   const statusLower = normalizeOrderStatus(order.rawStatus || order.status);
   const isPending = statusLower === 'pending';
+  const isCancellable = statusLower !== 'delivered' && statusLower !== 'completed' && statusLower !== 'cancelled';
   const isTracking = isTrackableStatus(order.rawStatus || order.status) || Boolean(order.riderId);
 
   useEffect(() => {
@@ -830,7 +831,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
             </View>
           </View>
 
-          {isPending && (
+          {isCancellable && (
             <View style={{ gap: 10, marginBottom: 10 }}>
               <TouchableOpacity
                 activeOpacity={0.9}
