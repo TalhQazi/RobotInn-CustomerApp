@@ -22,6 +22,15 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    if (BuildConfig.DEBUG) {
+      val preferences = applicationContext.getSharedPreferences(
+        "${applicationContext.packageName}_preferences",
+        android.content.Context.MODE_PRIVATE
+      )
+      if (!preferences.contains("debug_http_host")) {
+        preferences.edit().putString("debug_http_host", "192.168.1.4:8081").apply()
+      }
+    }
     loadReactNative(this)
   }
 }
