@@ -120,6 +120,25 @@ const Header = ({
     }
   };
 
+  const handleStatPress = (label) => {
+    setSidebarVisible(false);
+    let filter = 'total';
+    if (label === 'Active') {
+      filter = 'active';
+    } else if (label === 'Completed') {
+      filter = 'completed';
+    }
+
+    if (navigation.getParent()) {
+      navigation.getParent().navigate('Profile', {
+        screen: 'OrderHistory',
+        params: { filter }
+      });
+    } else {
+      navigation.navigate('OrderHistory', { filter });
+    }
+  };
+
   const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
   const handleLogout = () => {
@@ -195,7 +214,12 @@ const Header = ({
               <Text style={styles.sectionTitle}>Overview</Text>
               <View style={styles.statsGrid}>
                 {statsData.map((stat, index) => (
-                  <View key={index} style={styles.statCard}>
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.statCard}
+                    onPress={() => handleStatPress(stat.label)}
+                    activeOpacity={0.7}
+                  >
                     <View style={[styles.statIconContainer, { backgroundColor: `${stat.color}15` }]}>
                       <Ionicons name={stat.icon} size={22} color={stat.color} />
                     </View>
@@ -204,7 +228,7 @@ const Header = ({
                     <View style={styles.progressBarContainer}>
                       <View style={[styles.progressBar, { width: `${stat.progress * 100}%`, backgroundColor: stat.color }]} />
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -91,11 +91,18 @@ function mapOrderToDetails(o) {
   };
 }
 
-const OrderHistoryScreen = ({ navigation }) => {
-  const [orders, setOrders] = useState([]);
+const OrderHistoryScreen = ({ navigation, route }) => {
+  const [allOrders, setAllOrders] = useState([]);
+  const [activeFilter, setActiveFilter] = useState(route?.params?.filter || 'total');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState(null);
+
+  useEffect(() => {
+    if (route?.params?.filter) {
+      setActiveFilter(route?.params?.filter);
+    }
+  }, [route?.params?.filter]);
 
   const isPendingStatus = (status) => String(status || '').toLowerCase() === 'pending';
 
@@ -111,7 +118,7 @@ const OrderHistoryScreen = ({ navigation }) => {
         Alert.alert('Order Cancelled', `Order #${order.orderId?.slice(-6) || order.id?.slice(-6)} has been cancelled successfully.`, [
           { text: 'OK', style: 'cancel' }
         ]);
-        setOrders((prev) => prev.map((o) => (
+        setAllOrders((prev) => prev.map((o) => (
           o.id === order.id ? { ...o, status: 'Cancelled', rawStatus: 'cancelled' } : o
         )));
       } else {
@@ -144,7 +151,7 @@ const OrderHistoryScreen = ({ navigation }) => {
     try {
       const res = await ordersAPI.getMyOrders({ limit: 100 });
       if (res.success && Array.isArray(res.data)) {
-        setOrders(
+        setAllOrders(
           res.data.map((o) => ({
             id: String(o.id),
             orderId: o.orderId,
@@ -159,11 +166,11 @@ const OrderHistoryScreen = ({ navigation }) => {
           }))
         );
       } else {
-        setOrders([]);
+        setAllOrders([]);
       }
     } catch (e) {
       console.error('Order history load error:', e);
-      setOrders([]);
+      setAllOrders([]);
     }
   }, []);
 
@@ -180,12 +187,36 @@ const OrderHistoryScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  const deliveredCount = orders.filter(
-    (o) => String(o.rawStatus).toLowerCase() === 'delivered'
-  ).length;
-  const cancelledCount = orders.filter(
-    (o) => String(o.rawStatus).toLowerCase() === 'cancelled'
-  ).length;
+  const { filteredOrders, activeCount, deliveredCount, cancelledCount, totalCount } = useMemo(() => {
+    const active = allOrders.filter(o => 
+      ['pending', 'accepted', 'processing', 'picked', 'preparing'].includes(String(o.rawStatus).toLowerCase())
+    ).length;
+    const delivered = allOrders.filter(o => 
+      String(o.rawStatus).toLowerCase() === 'delivered'
+    ).length;
+    const cancelled = allOrders.filter(o => 
+      String(o.rawStatus).toLowerCase() === 'cancelled'
+    ).length;
+
+    let filtered = allOrders;
+    if (activeFilter === 'active') {
+      filtered = allOrders.filter(o => 
+        ['pending', 'accepted', 'processing', 'picked', 'preparing'].includes(String(o.rawStatus).toLowerCase())
+      );
+    } else if (activeFilter === 'completed') {
+      filtered = allOrders.filter(o => 
+        String(o.rawStatus).toLowerCase() === 'delivered'
+      );
+    }
+
+    return {
+      filteredOrders: filtered,
+      activeCount: active,
+      deliveredCount: delivered,
+      cancelledCount: cancelled,
+      totalCount: allOrders.length,
+    };
+  }, [allOrders, activeFilter]);
 
   const getStatusColor = (status) => {
     const s = String(status).toLowerCase();
@@ -277,37 +308,61 @@ const OrderHistoryScreen = ({ navigation }) => {
         </View>
       ) : (
         <FlatList
-          data={orders}
+          data={filteredOrders}
           renderItem={renderOrderItem}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={[styles.listContent, orders.length === 0 && styles.emptyList]}
+          contentContainerStyle={[styles.listContent, filteredOrders.length === 0 && styles.emptyList]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
           }
           ListHeaderComponent={
-            orders.length > 0 ? (
+            allOrders.length > 0 ? (
               <View style={styles.summaryContainer}>
-                <View style={styles.summaryCard}>
-                  <Text style={styles.summaryNumber}>{deliveredCount}</Text>
-                  <Text style={styles.summaryLabel}>Delivered</Text>
-                </View>
-                <View style={styles.summaryCard}>
-                  <Text style={styles.summaryNumber}>{cancelledCount}</Text>
-                  <Text style={styles.summaryLabel}>Cancelled</Text>
-                </View>
-                <View style={styles.summaryCard}>
-                  <Text style={styles.summaryNumber}>{orders.length}</Text>
-                  <Text style={styles.summaryLabel}>Total</Text>
-                </View>
+                <TouchableOpacity 
+                  style={[styles.summaryCard, activeFilter === 'total' && styles.summaryCardActive]}
+                  onPress={() => setActiveFilter('total')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.summaryNumber, activeFilter === 'total' && styles.summaryNumberActive]}>{totalCount}</Text>
+                  <Text style={[styles.summaryLabel, activeFilter === 'total' && styles.summaryLabelActive]}>Total</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.summaryCard, activeFilter === 'active' && styles.summaryCardActive]}
+                  onPress={() => setActiveFilter('active')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.summaryNumber, activeFilter === 'active' && styles.summaryNumberActive, { color: '#c7b407ff' }]}>{activeCount}</Text>
+                  <Text style={[styles.summaryLabel, activeFilter === 'active' && styles.summaryLabelActive]}>Active</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.summaryCard, activeFilter === 'completed' && styles.summaryCardActive]}
+                  onPress={() => setActiveFilter('completed')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.summaryNumber, activeFilter === 'completed' && styles.summaryNumberActive, { color: '#4ECDC4' }]}>{deliveredCount}</Text>
+                  <Text style={[styles.summaryLabel, activeFilter === 'completed' && styles.summaryLabelActive]}>Completed</Text>
+                </TouchableOpacity>
               </View>
             ) : null
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="receipt-outline" size={60} color={COLORS.textSecondary} />
-              <Text style={styles.emptyText}>No order history yet</Text>
-              <Text style={styles.emptyHint}>Your placed orders will appear here.</Text>
+              <Text style={styles.emptyText}>
+                {activeFilter === 'active' 
+                  ? 'No active orders' 
+                  : activeFilter === 'completed' 
+                    ? 'No completed orders' 
+                    : 'No order history yet'}
+              </Text>
+              <Text style={styles.emptyHint}>
+                {activeFilter === 'active' 
+                  ? 'Your active/in-progress orders will appear here.' 
+                  : activeFilter === 'completed' 
+                    ? 'Your delivered orders will appear here.' 
+                    : 'Your placed orders will appear here.'}
+              </Text>
             </View>
           }
         />
@@ -334,9 +389,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: SPACING.xs,
     elevation: 3,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  summaryCardActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#EEFAF9',
   },
   summaryNumber: { fontSize: 24, fontWeight: '800', color: COLORS.primary },
+  summaryNumberActive: {
+    fontWeight: '900',
+  },
   summaryLabel: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
+  summaryLabelActive: {
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
   orderCardWrapper: {
     marginBottom: SPACING.lg,
   },
