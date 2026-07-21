@@ -23,6 +23,17 @@ import Card from '../../components/common/Card';
 import ThemedAlert from '../../components/common/ThemedAlert';
 import { billsAPI, uploadAPI } from '../../services/api';
 
+const formatBillAmount = (bill) => {
+  if (!bill) return '0.00';
+  const val =
+    bill.amount ??
+    bill.total ??
+    ((parseFloat(bill.productPrice) || 0) + (parseFloat(bill.shippingFee) || 0));
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  if (isNaN(num)) return '0.00';
+  return num.toFixed(2);
+};
+
 const BillsScreen = ({ navigation, route }) => {
   const [bills, setBills] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -237,7 +248,7 @@ const BillsScreen = ({ navigation, route }) => {
       <View style={styles.billDetails}>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Amount:</Text>
-          <Text style={styles.detailValue}>Rs. {item.amount?.toFixed(2) || '0.00'}</Text>
+          <Text style={styles.detailValue}>Rs. {formatBillAmount(item)}</Text>
         </View>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Date:</Text>
@@ -335,7 +346,7 @@ const BillsScreen = ({ navigation, route }) => {
               <View style={styles.billSummaryCard}>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Bill Amount:</Text>
-                  <Text style={styles.summaryValue}>Rs. {selectedBill.amount?.toFixed(2) || '0.00'}</Text>
+                  <Text style={styles.summaryValue}>Rs. {formatBillAmount(selectedBill)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Bill ID:</Text>

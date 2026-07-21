@@ -676,14 +676,35 @@ export const billsAPI = {
 
     const ordersSnap = await firestore()
       .collection('orders')
-      .where('customer.id', '==', firebaseUser.uid)
       .get();
-      
+
     const bills = [];
     ordersSnap.forEach(doc => {
       const order = doc.data();
-      if (order.bill) {
-        bills.push({ id: doc.id, orderId: order.orderId, ...order.bill });
+      const isCustomerOrder =
+        order.customerId === firebaseUser.uid ||
+        order.customer?.id === firebaseUser.uid ||
+        order.customer?.uid === firebaseUser.uid ||
+        order.userId === firebaseUser.uid ||
+        order.uid === firebaseUser.uid;
+
+      if (isCustomerOrder && order.bill) {
+        const amount =
+          order.bill.amount ??
+          order.bill.total ??
+          ((parseFloat(order.bill.productPrice) || 0) + (parseFloat(order.bill.shippingFee) || 0)) ??
+          order.total ??
+          order.price ??
+          0;
+
+        bills.push({
+          id: doc.id,
+          orderId: order.orderId || doc.id,
+          ...order.bill,
+          amount: parseFloat(amount) || 0,
+          total: parseFloat(amount) || 0,
+          createdAt: order.bill.submittedAt || order.createdAt || new Date().toISOString(),
+        });
       }
     });
     return { success: true, data: bills };
@@ -693,7 +714,22 @@ export const billsAPI = {
     const orderSnap = await firestore().collection('orders').doc(billId).get();
     if (!checkExists(orderSnap)) throw new Error('Bill not found');
     const order = orderSnap.data();
-    return { success: true, data: { id: orderSnap.id, orderId: order.orderId, ...order.bill } };
+    const amount =
+      order.bill?.amount ??
+      order.bill?.total ??
+      ((parseFloat(order.bill?.productPrice) || 0) + (parseFloat(order.bill?.shippingFee) || 0)) ??
+      order.total ??
+      0;
+    return {
+      success: true,
+      data: {
+        id: orderSnap.id,
+        orderId: order.orderId || orderSnap.id,
+        ...order.bill,
+        amount: parseFloat(amount) || 0,
+        total: parseFloat(amount) || 0,
+      },
+    };
   },
 
   uploadPaymentProof: async ({ billId, uri, fileName, type }) => {

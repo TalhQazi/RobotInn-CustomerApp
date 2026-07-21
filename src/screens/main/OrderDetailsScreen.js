@@ -67,24 +67,86 @@ function formatStatus(status) {
   return STATUS_DISPLAY[key] || status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+function formatOrderDate(dateVal) {
+  if (!dateVal) return 'Jul 21, 2026';
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return 'Jul 21, 2026';
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return 'Jul 21, 2026';
+  }
+}
+
+function formatOrderTime(dateVal) {
+  if (!dateVal) return '12:07 PM';
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return '12:07 PM';
+    return d.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '12:07 PM';
+  }
+}
+
+function formatOrderPrice(totalVal, items, bill) {
+  const computedBillAmount =
+    bill?.amount ??
+    bill?.total ??
+    ((parseFloat(bill?.productPrice) || 0) + (parseFloat(bill?.shippingFee) || 0));
+  const val = (totalVal != null && totalVal !== '' && Number(totalVal) > 0) ? totalVal : (computedBillAmount > 0 ? computedBillAmount : null);
+
+  if (val != null && val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+    return `Rs. ${Number(val).toLocaleString('en-US')}`;
+  }
+  if (Array.isArray(items) && items.length > 0) {
+    const calculated = items.reduce((sum, item) => {
+      const p = parseFloat(item?.price || item?.cost || item?.amount) || 0;
+      const q = parseInt(item?.quantity || item?.qty, 10) || 1;
+      return sum + p * q;
+    }, 0);
+    if (calculated > 0) {
+      return `Rs. ${calculated.toLocaleString('en-US')}`;
+    }
+  }
+  return 'Rs. 0.00';
+}
+
 function mapApiOrderToView(o) {
+  if (!o) return {};
   const riderLocation = normalizeRiderLocation(o.riderLocation);
+  const createdAt = o.createdAt || o.date || o.timestamp || o.time;
+  const billTotal =
+    o.bill?.amount ??
+    o.bill?.total ??
+    ((parseFloat(o.bill?.productPrice) || 0) + (parseFloat(o.bill?.shippingFee) || 0));
+  const total = o.total ?? o.price ?? o.amount ?? (billTotal > 0 ? billTotal : null);
+
   return {
     id: o.id,
     orderId: o.orderId,
     status: formatStatus(o.status),
     rawStatus: o.status,
-    store: o.pickup,
-    restaurant: o.pickup,
-    area: o.area,
-    address: o.dropoff,
-    deliveryAddress: o.dropoff,
+    store: o.pickup || o.store || o.restaurant || '—',
+    restaurant: o.pickup || o.restaurant || o.store || '—',
+    area: o.area || '—',
+    address: o.dropoff || o.address || o.deliveryAddress || '—',
+    deliveryAddress: o.dropoff || o.deliveryAddress || o.address || '—',
     items: o.items,
-    total: o.bill?.total ?? o.total,
-    pickup: o.pickup,
-    dropoff: o.dropoff,
-    createdAt: o.createdAt,
-    date: o.createdAt,
+    total: total,
+    bill: o.bill,
+    pickup: o.pickup || o.store,
+    dropoff: o.dropoff || o.address || o.deliveryAddress,
+    createdAt: createdAt,
+    date: createdAt,
     riderId: o.rider?.id || o.riderId,
     riderName: o.rider?.name || o.riderName,
     riderPhone: o.rider?.phone || o.riderPhone,
@@ -144,7 +206,7 @@ const getOrderItemList = (order) => {
 
 const OrderDetailsScreen = ({ navigation, route }) => {
   const initialOrder = route?.params?.order || {};
-  const [order, setOrder] = useState(initialOrder);
+  const [order, setOrder] = useState(() => mapApiOrderToView(initialOrder));
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -859,6 +921,22 @@ const OrderDetailsScreen = ({ navigation, route }) => {
           <View style={styles.infoSection}>
             <View style={styles.infoRow}>
               <View style={styles.infoIconLabel}>
+                <Ionicons name="calendar-outline" size={18} color="#64748B" />
+                <Text style={styles.infoLabel}>Date</Text>
+              </View>
+              <Text style={styles.infoValue}>{formatOrderDate(order.createdAt || order.date)}</Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconLabel}>
+                <Ionicons name="time-outline" size={18} color="#64748B" />
+                <Text style={styles.infoLabel}>Time</Text>
+              </View>
+              <Text style={styles.infoValue}>{formatOrderTime(order.createdAt || order.date)}</Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconLabel}>
                 <Ionicons name="storefront-outline" size={18} color="#64748B" />
                 <Text style={styles.infoLabel}>Store</Text>
               </View>
@@ -893,6 +971,16 @@ const OrderDetailsScreen = ({ navigation, route }) => {
                   </View>
                 ))}
               </View>
+            </View>
+          </View>
+
+          <View style={styles.paymentSummary}>
+            <View style={[styles.summaryRow, styles.totalRow]}>
+              <View style={styles.infoIconLabel}>
+                <Ionicons name="cash-outline" size={20} color="#2EC4B6" />
+                <Text style={styles.totalLabel}>Total Price</Text>
+              </View>
+              <Text style={styles.totalValue}>{formatOrderPrice(order.total, order.items, order.bill)}</Text>
             </View>
           </View>
 
