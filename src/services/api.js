@@ -10,6 +10,28 @@ const checkExists = (snap) => {
   return typeof snap.exists === 'function' ? snap.exists() : !!snap.exists;
 };
 
+const parseGlobalTimestamp = (obj) => {
+  if (!obj) return 0;
+  const val = obj.createdAt || obj.submittedAt || obj.timestamp || obj.updatedAt || obj.date;
+  if (val) {
+    if (val instanceof Date) return val.getTime();
+    if (typeof val === 'object' && typeof val.seconds === 'number') return val.seconds * 1000;
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  const idStr = String(obj.id || obj._id || '');
+  if (/^[0-9a-fA-F]{24}$/.test(idStr)) {
+    const timestamp = parseInt(idStr.substring(0, 8), 16) * 1000;
+    if (!isNaN(timestamp) && timestamp > 0) return timestamp;
+  }
+  const matches = idStr.match(/\d{10,13}/);
+  if (matches) {
+    const num = Number(matches[0]);
+    if (!isNaN(num)) return num > 1e11 ? num : num * 1000;
+  }
+  return 0;
+};
+
 // Configure Google Sign-In
 GoogleSignin.configure({
   webClientId: '301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com',
@@ -31,11 +53,18 @@ export const authAPI = {
     } catch (createErr) {
       // If email already exists in Firebase Auth (e.g. registered as rider), sign in instead
       if (createErr.code === 'auth/email-already-in-use') {
-        const userCredential = await auth().signInWithEmailAndPassword(email, password);
-        firebaseUser = userCredential.user;
-        const existingSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
-        if (checkExists(existingSnap)) {
-          existingProfile = existingSnap.data();
+        try {
+          const userCredential = await auth().signInWithEmailAndPassword(email, password);
+          firebaseUser = userCredential.user;
+          const existingSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
+          if (checkExists(existingSnap)) {
+            existingProfile = existingSnap.data();
+          }
+        } catch (signInErr) {
+          if (signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
+            throw new Error('This email is already registered with a different password. If you already have a rider account, please sign up using your existing password to link your customer profile.');
+          }
+          throw signInErr;
         }
       } else {
         throw createErr;
@@ -454,7 +483,7 @@ export const ordersAPI = {
     });
     
     // Sort by date newest first
-    data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    data.sort((a, b) => parseGlobalTimestamp(b) - parseGlobalTimestamp(a));
     return { success: true, data };
   },
 
@@ -488,6 +517,8 @@ export const notificationsAPI = {
     snap.forEach(doc => {
       data.push({ id: doc.id, ...doc.data() });
     });
+    
+    data.sort((a, b) => parseGlobalTimestamp(b) - parseGlobalTimestamp(a));
     return { success: true, data };
   },
 
@@ -572,7 +603,12 @@ export const usersAPI = {
     if (!firebaseUser) throw new Error('Authentication required');
 
     const addressId = `ADR-${Date.now()}`;
-    const newAddress = { id: addressId, ...addressData };
+    const newAddress = {
+      id: addressId,
+      addressId,
+      ...addressData,
+      createdAt: addressData.createdAt || new Date().toISOString(),
+    };
     
     await firestore().collection('users').doc(firebaseUser.uid).update({
       addresses: firestore.FieldValue.arrayUnion(newAddress)
@@ -668,6 +704,25 @@ export const categoriesAPI = {
   },
 };
 
+// Helper function to resolve exact non-zero bill total
+const resolveBillAmount = (bill, order) => {
+  const pPrice = parseFloat(bill?.productPrice) || 0;
+  const sFee = parseFloat(bill?.shippingFee) || 0;
+  const compSum = pPrice + sFee;
+
+  const bAmount = parseFloat(bill?.amount) || 0;
+  const bTotal = parseFloat(bill?.total) || 0;
+  const oTotal = parseFloat(order?.total) || 0;
+  const oPrice = parseFloat(order?.price) || 0;
+
+  if (bAmount > 0) return bAmount;
+  if (bTotal > 0) return bTotal;
+  if (compSum > 0) return compSum;
+  if (oTotal > 0) return oTotal;
+  if (oPrice > 0) return oPrice;
+  return 0;
+};
+
 // Bills API
 export const billsAPI = {
   getMyBills: async () => {
@@ -689,24 +744,20 @@ export const billsAPI = {
         order.uid === firebaseUser.uid;
 
       if (isCustomerOrder && order.bill) {
-        const amount =
-          order.bill.amount ??
-          order.bill.total ??
-          ((parseFloat(order.bill.productPrice) || 0) + (parseFloat(order.bill.shippingFee) || 0)) ??
-          order.total ??
-          order.price ??
-          0;
+        const amount = resolveBillAmount(order.bill, order);
 
         bills.push({
           id: doc.id,
           orderId: order.orderId || doc.id,
           ...order.bill,
-          amount: parseFloat(amount) || 0,
-          total: parseFloat(amount) || 0,
+          amount,
+          total: amount,
           createdAt: order.bill.submittedAt || order.createdAt || new Date().toISOString(),
         });
       }
     });
+    
+    bills.sort((a, b) => parseGlobalTimestamp(b) - parseGlobalTimestamp(a));
     return { success: true, data: bills };
   },
 
@@ -714,20 +765,15 @@ export const billsAPI = {
     const orderSnap = await firestore().collection('orders').doc(billId).get();
     if (!checkExists(orderSnap)) throw new Error('Bill not found');
     const order = orderSnap.data();
-    const amount =
-      order.bill?.amount ??
-      order.bill?.total ??
-      ((parseFloat(order.bill?.productPrice) || 0) + (parseFloat(order.bill?.shippingFee) || 0)) ??
-      order.total ??
-      0;
+    const amount = resolveBillAmount(order?.bill, order);
     return {
       success: true,
       data: {
         id: orderSnap.id,
         orderId: order.orderId || orderSnap.id,
         ...order.bill,
-        amount: parseFloat(amount) || 0,
-        total: parseFloat(amount) || 0,
+        amount,
+        total: amount,
       },
     };
   },
@@ -839,6 +885,12 @@ export const chatAPI = {
     } catch (err) {
       console.error('Error auto-creating conversations for active orders:', err);
     }
+
+    data.sort((a, b) => {
+      const ta = a.lastMessageTime ? parseGlobalTimestamp({ createdAt: a.lastMessageTime }) : parseGlobalTimestamp(a);
+      const tb = b.lastMessageTime ? parseGlobalTimestamp({ createdAt: b.lastMessageTime }) : parseGlobalTimestamp(b);
+      return tb - ta;
+    });
 
     return { success: true, data };
   },

@@ -21,17 +21,20 @@ import { SPACING } from '../../theme/spacing';
 import Header from '../../components/common/Header';
 import Card from '../../components/common/Card';
 import ThemedAlert from '../../components/common/ThemedAlert';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
 import { billsAPI, uploadAPI } from '../../services/api';
 
 const formatBillAmount = (bill) => {
   if (!bill) return '0.00';
-  const val =
-    bill.amount ??
-    bill.total ??
-    ((parseFloat(bill.productPrice) || 0) + (parseFloat(bill.shippingFee) || 0));
-  const num = typeof val === 'number' ? val : parseFloat(val);
-  if (isNaN(num)) return '0.00';
-  return num.toFixed(2);
+  const pPrice = parseFloat(bill.productPrice) || 0;
+  const sFee = parseFloat(bill.shippingFee) || 0;
+  const compSum = pPrice + sFee;
+  const bAmount = parseFloat(bill.amount) || 0;
+  const bTotal = parseFloat(bill.total) || 0;
+
+  const val = bAmount > 0 ? bAmount : (bTotal > 0 ? bTotal : (compSum > 0 ? compSum : 0));
+  return val.toFixed(2);
 };
 
 const BillsScreen = ({ navigation, route }) => {
@@ -76,6 +79,23 @@ const BillsScreen = ({ navigation, route }) => {
       setLoading(false);
     }
   }, []);
+
+  // Real-time listener for bills update from Firestore
+  useEffect(() => {
+    const user = auth().currentUser;
+    if (!user) return;
+
+    const unsubscribe = firestore()
+      .collection('orders')
+      .onSnapshot(
+        () => {
+          fetchBills();
+        },
+        (err) => console.log('Bills snapshot listener error:', err)
+      );
+
+    return () => unsubscribe();
+  }, [fetchBills]);
 
   // Fetch bills on initial load
   useEffect(() => {

@@ -32,17 +32,36 @@ const CartScreen = ({ navigation }) => {
 
   const fetchCart = async () => {
     const items = await getData(ASYNC_STORAGE_KEYS.CART) || [];
-    // Handle both old format (array of items) and new format (array of orders)
-    if (items.length > 0 && items[0].items) {
-      // New format - each item is an order with items array
-      setCartOrders(items);
-      // Flatten items for display
-      const allItems = items.flatMap(order => order.items || []);
-      setCartItems(allItems);
+    if (items.length > 0) {
+      if (items[0].items) {
+        // New format - each item is an order with items array
+        setCartOrders(items);
+        // Flatten items for display
+        const allItems = items.flatMap(order => order.items || []);
+        setCartItems(allItems);
+      } else {
+        // Old format - direct items array, convert it to the new order format
+        const mockOrder = {
+          id: `mock-ord-${Date.now()}`,
+          items: items.map((it, idx) => ({
+            text: it.text || it.itemName || it.name || 'Item',
+            quantity: parseInt(it.quantity, 10) || 1,
+            price: parseFloat(it.price) || 0,
+          })),
+          store: 'Robot Store',
+          area: 'N/A',
+          address: 'N/A',
+          isRobotStore: true,
+          createdAt: new Date().toISOString()
+        };
+        const normalized = [mockOrder];
+        setCartOrders(normalized);
+        setCartItems(items);
+        await storeData(ASYNC_STORAGE_KEYS.CART, normalized);
+      }
     } else {
-      // Old format - direct items array
       setCartOrders([]);
-      setCartItems(items);
+      setCartItems([]);
     }
   };
 

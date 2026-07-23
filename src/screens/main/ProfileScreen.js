@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Image, Modal, ActivityIndicator, Animated } from 'react-native';
-import { launchImageLibrary } from 'react-native-image-picker';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Image, Modal, ActivityIndicator, Animated, Platform, PermissionsAndroid } from 'react-native';
+import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import { COLORS } from '../../theme/colors';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
@@ -71,38 +71,55 @@ const ProfileScreen = ({ navigation }) => {
       'Are you sure you want to logout?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
+        {
+          text: 'Logout',
           onPress: async () => {
             await authAPI.logout();
             resetToAuth();
-          }, 
+          },
         }
       ]
     );
   };
 
-  const handleProfilePicUpdate = async () => {
-    if (uploadingAvatar) {
-      return;
-    }
-
+  const openImagePicker = async (source) => {
     try {
-      const response = await launchImageLibrary({
+      if (source === 'camera' && Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: 'Camera Permission',
+            message: 'This app needs camera permission to capture your profile photo.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Deny',
+            buttonPositive: 'OK',
+          }
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert('Permission Denied', 'Camera permission is required to capture photos.');
+          return;
+        }
+      }
+
+      const options = {
         mediaType: 'photo',
         selectionLimit: 1,
         includeBase64: true,
         maxWidth: 500,
         maxHeight: 500,
         quality: 0.6,
-      });
+      };
+
+      const response = source === 'camera'
+        ? await launchCamera(options)
+        : await launchImageLibrary(options);
 
       if (response.didCancel) {
         return;
       }
 
       if (response.errorCode) {
-        Alert.alert('Error', response.errorMessage || 'Could not open photo library');
+        Alert.alert('Error', response.errorMessage || 'Could not open camera or photo library');
         return;
       }
 
@@ -120,8 +137,33 @@ const ProfileScreen = ({ navigation }) => {
       });
     } catch (error) {
       console.error('Image picker error:', error);
-      Alert.alert('Error', 'Could not open photo library');
+      Alert.alert('Error', 'Could not open camera or photo library');
     }
+  };
+
+  const handleProfilePicUpdate = async () => {
+    if (uploadingAvatar) {
+      return;
+    }
+
+    Alert.alert(
+      'Profile Photo',
+      'Choose an option to update your profile photo:',
+      [
+        {
+          text: 'Take Photo',
+          onPress: () => openImagePicker('camera'),
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: () => openImagePicker('library'),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
   const handleUpload = async (imageToUpload) => {
@@ -129,7 +171,7 @@ const ProfileScreen = ({ navigation }) => {
 
     try {
       const uriToUpload = imageToUpload?.uri;
-      
+
       if (!uriToUpload) {
         throw new Error('Image selection failed: No image URI returned');
       }
@@ -140,7 +182,7 @@ const ProfileScreen = ({ navigation }) => {
       console.log('Updating profile with base64 avatar...');
       const profileRes = await usersAPI.updateProfile({ avatar: base64Url });
       console.log('Profile update response:', profileRes);
-      
+
       if (profileRes?.success) {
         const updatedUser = profileRes?.data || { avatar: base64Url };
         await updateLocalUser(updatedUser);
@@ -158,8 +200,8 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   const MenuItem = ({ icon, title, onPress, color, isFirst, isLast, badge = 0 }) => (
-    <TouchableOpacity 
-      onPress={onPress} 
+    <TouchableOpacity
+      onPress={onPress}
       style={[
         styles.menuItem,
         isFirst && styles.menuItemFirst,
@@ -217,7 +259,7 @@ const ProfileScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header 
+      <Header
         navigation={navigation}
         title="My Profile"
         showBackButton={true}
@@ -245,20 +287,20 @@ const ProfileScreen = ({ navigation }) => {
 
         {/* Quick Cards Row */}
         <View style={styles.quickCardsContainer}>
-          <QuickCard 
-            icon="receipt-outline" 
-            title="Orders" 
-            onPress={() => navigation.navigate('Requests')} 
+          <QuickCard
+            icon="receipt-outline"
+            title="Orders"
+            onPress={() => navigation.navigate('Requests')}
           />
           {/* <QuickCard 
             icon="heart-outline" 
             title="Favourites" 
             onPress={() => {}} 
           /> */}
-          <QuickCard 
-            icon="location-outline" 
-            title="Addresses" 
-            onPress={() => navigation.navigate('MyAddresses')} 
+          <QuickCard
+            icon="location-outline"
+            title="Addresses"
+            onPress={() => navigation.navigate('MyAddresses')}
           />
         </View>
 
@@ -293,21 +335,21 @@ const ProfileScreen = ({ navigation }) => {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>General</Text>
           <View style={styles.menuCard}>
-            <MenuItem 
-              icon="help-circle-outline" 
-              title="Help center" 
+            <MenuItem
+              icon="help-circle-outline"
+              title="Help center"
               color={COLORS.textSecondary}
               isFirst={true}
               isLast={false}
-              onPress={() => navigation.navigate('HelpCenter')} 
+              onPress={() => navigation.navigate('HelpCenter')}
             />
-            <MenuItem 
-              icon="document-text-outline" 
-              title="Terms & policies" 
+            <MenuItem
+              icon="document-text-outline"
+              title="Terms & policies"
               color={COLORS.textSecondary}
               isFirst={false}
               isLast={true}
-              onPress={() => setTermsModalVisible(true)} 
+              onPress={() => setTermsModalVisible(true)}
             />
           </View>
         </View>
@@ -316,7 +358,7 @@ const ProfileScreen = ({ navigation }) => {
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Log out</Text>
         </TouchableOpacity>
-        
+
         <Text style={styles.versionText}>Version 1.0.0</Text>
       </ScrollView>
 
@@ -370,7 +412,7 @@ For any questions, please contact our support team.`}
           </TouchableOpacity>
         </Modal>
       )}
-      )}
+      )
     </SafeAreaView>
   );
 };

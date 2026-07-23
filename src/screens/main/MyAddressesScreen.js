@@ -22,6 +22,36 @@ import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
 import { getCurrentLocationWithAddress } from '../../utils/location';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
+const parseAddressTime = (addr) => {
+  if (!addr) return 0;
+  const val = addr.createdAt || addr.date || addr.timestamp || addr.updatedAt;
+  if (val) {
+    if (val instanceof Date) return val.getTime();
+    if (typeof val === 'object' && typeof val.seconds === 'number') return val.seconds * 1000;
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  const idStr = String(addr.id || addr.addressId || addr._id || '');
+  const matches = idStr.match(/\d{10,13}/);
+  if (matches) {
+    const num = Number(matches[0]);
+    if (!isNaN(num)) return num > 1e11 ? num : num * 1000;
+  }
+  return 0;
+};
+
+const sortAddressesNewestFirst = (addrList) => {
+  if (!Array.isArray(addrList)) return [];
+  return [...addrList].sort((a, b) => {
+    const tA = parseAddressTime(a);
+    const tB = parseAddressTime(b);
+    if (tA > 0 && tB > 0) return tB - tA;
+    if (tA > 0) return -1;
+    if (tB > 0) return 1;
+    return 0;
+  });
+};
+
 const MyAddressesScreen = ({ navigation }) => {
   const [addresses, setAddresses] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -47,14 +77,15 @@ const MyAddressesScreen = ({ navigation }) => {
           ...addr,
           id: addr.addressId || addr._id || addr.id,
         }));
-        setAddresses(formattedAddresses);
-        await storeData(ASYNC_STORAGE_KEYS.ADDRESSES, formattedAddresses);
+        const sorted = sortAddressesNewestFirst(formattedAddresses);
+        setAddresses(sorted);
+        await storeData(ASYNC_STORAGE_KEYS.ADDRESSES, sorted);
       }
     } catch (error) {
       console.error('Load addresses error:', error);
       const savedAddresses = await getData(ASYNC_STORAGE_KEYS.ADDRESSES);
       if (savedAddresses) {
-        setAddresses(savedAddresses);
+        setAddresses(sortAddressesNewestFirst(savedAddresses));
       }
     } finally {
       setLoading(false);
@@ -62,8 +93,9 @@ const MyAddressesScreen = ({ navigation }) => {
   };
 
   const saveAddresses = async (newAddresses) => {
-    setAddresses(newAddresses);
-    await storeData(ASYNC_STORAGE_KEYS.ADDRESSES, newAddresses);
+    const sorted = sortAddressesNewestFirst(newAddresses);
+    setAddresses(sorted);
+    await storeData(ASYNC_STORAGE_KEYS.ADDRESSES, sorted);
   };
 
   const handleUseCurrentLocation = async () => {
@@ -72,6 +104,10 @@ const MyAddressesScreen = ({ navigation }) => {
       const { lat, lng, address: formattedAddress } = await getCurrentLocationWithAddress();
       setCurrentLocation({ lat, lng });
       setAddress(formattedAddress);
+      if (!title.trim()) {
+        const mainPart = formattedAddress.split(',')[0] || 'Current Location';
+        setTitle(mainPart);
+      }
       setUseCurrentLocation(true);
     } catch (error) {
       console.error('Location error:', error);
@@ -91,15 +127,19 @@ const MyAddressesScreen = ({ navigation }) => {
       const payload = {
         title: title.trim(),
         address: address.trim(),
+        fullAddress: address.trim(),
+        formattedAddress: address.trim(),
         isCurrentLocation: useCurrentLocation,
         location: currentLocation || null,
+        createdAt: new Date().toISOString(),
       };
       const response = await usersAPI.addAddress(payload);
       const newAddress = {
         ...response.data,
-        id: response.data.addressId || response.data._id || response.data.id,
+        id: response.data?.addressId || response.data?._id || response.data?.id || `ADR-${Date.now()}`,
+        createdAt: payload.createdAt,
       };
-      const updatedAddresses = [...addresses, newAddress];
+      const updatedAddresses = sortAddressesNewestFirst([newAddress, ...addresses]);
       await saveAddresses(updatedAddresses);
       resetForm();
       setShowAddModal(false);
@@ -122,13 +162,16 @@ const MyAddressesScreen = ({ navigation }) => {
       const payload = {
         title: title.trim(),
         address: address.trim(),
+        fullAddress: address.trim(),
+        formattedAddress: address.trim(),
         isCurrentLocation: useCurrentLocation,
         location: currentLocation || null,
+        updatedAt: new Date().toISOString(),
       };
       const response = await usersAPI.updateAddress(editingAddress.addressId || editingAddress.id, payload);
       const updatedAddresses = addresses.map((addr) =>
         addr.id === (editingAddress.addressId || editingAddress.id)
-          ? { ...addr, ...response.data, id: response.data.addressId || addr.id }
+          ? { ...addr, ...response.data, ...payload, id: editingAddress.id }
           : addr
       );
       await saveAddresses(updatedAddresses);
@@ -172,8 +215,8 @@ const MyAddressesScreen = ({ navigation }) => {
 
   const handleEditAddress = (addr) => {
     setEditingAddress(addr);
-    setTitle(addr.title);
-    setAddress(addr.address);
+    setTitle(addr.title || '');
+    setAddress(addr.address || addr.fullAddress || addr.formattedAddress || '');
     setUseCurrentLocation(addr.isCurrentLocation || false);
     setCurrentLocation(addr.location || null);
     setShowAddModal(true);
@@ -186,42 +229,52 @@ const MyAddressesScreen = ({ navigation }) => {
     setCurrentLocation(null);
   };
 
-  const renderAddressCard = (addr) => (
-    <View key={addr.id} style={styles.addressCard}>
-      <View style={styles.addressCardContent}>
-        <View style={styles.addressHeader}>
-          <View style={styles.titleContainer}>
-            <Ionicons
-              name={addr.isCurrentLocation ? 'location' : 'location-outline'}
-              size={20}
-              color={COLORS.primary}
-            />
-            <Text style={styles.addressTitle}>{addr.title}</Text>
-            {addr.isCurrentLocation && (
-              <View style={styles.locationBadge}>
-                <Text style={styles.locationBadgeText}>Current</Text>
-              </View>
-            )}
+  const renderAddressCard = (addr) => {
+    const displayAddressText =
+      addr.address ||
+      addr.fullAddress ||
+      addr.formattedAddress ||
+      addr.details ||
+      addr.street ||
+      (addr.title ? `${addr.title}, Islamabad, Pakistan` : 'Islamabad, Pakistan');
+
+    return (
+      <View key={addr.id} style={styles.addressCard}>
+        <View style={styles.addressCardContent}>
+          <View style={styles.addressHeader}>
+            <View style={styles.titleContainer}>
+              <Ionicons
+                name={addr.isCurrentLocation ? 'location' : 'location-outline'}
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text style={styles.addressTitle}>{addr.title || 'Address'}</Text>
+              {addr.isCurrentLocation ? (
+                <View style={styles.locationBadge}>
+                  <Text style={styles.locationBadgeText}>Current</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.addressActions}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleEditAddress(addr)}
+              >
+                <Ionicons name="create-outline" size={20} color={COLORS.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleDeleteAddress(addr.id)}
+              >
+                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.addressActions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleEditAddress(addr)}
-            >
-              <Ionicons name="create-outline" size={20} color={COLORS.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleDeleteAddress(addr.id)}
-            >
-              <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.addressText}>{displayAddressText}</Text>
         </View>
-        <Text style={styles.addressText}>{addr.address}</Text>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>

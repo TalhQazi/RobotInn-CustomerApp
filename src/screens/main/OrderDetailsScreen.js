@@ -67,55 +67,117 @@ function formatStatus(status) {
   return STATUS_DISPLAY[key] || status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function formatOrderDate(dateVal) {
-  if (!dateVal) return 'Jul 21, 2026';
-  try {
+function parseDate(dateVal, fallbackOrder = null) {
+  if (dateVal) {
+    if (dateVal instanceof Date) return dateVal;
+    if (typeof dateVal.toDate === 'function') {
+      try { return dateVal.toDate(); } catch { }
+    }
+    if (typeof dateVal === 'object') {
+      if (typeof dateVal.seconds === 'number') return new Date(dateVal.seconds * 1000);
+      if (typeof dateVal._seconds === 'number') return new Date(dateVal._seconds * 1000);
+    }
+    if (typeof dateVal === 'number') {
+      return new Date(dateVal > 1e11 ? dateVal : dateVal * 1000);
+    }
     const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return 'Jul 21, 2026';
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  if (fallbackOrder) {
+    const candidate =
+      fallbackOrder.createdAt ||
+      fallbackOrder.date ||
+      fallbackOrder.timestamp ||
+      fallbackOrder.time ||
+      fallbackOrder.placedAt ||
+      fallbackOrder.created_at;
+    if (candidate && candidate !== dateVal) {
+      const parsedCand = parseDate(candidate);
+      if (parsedCand) return parsedCand;
+    }
+
+    const id = String(fallbackOrder.id || fallbackOrder.orderId || fallbackOrder._id || '');
+    if (/^[0-9a-fA-F]{24}$/.test(id)) {
+      const timestamp = parseInt(id.substring(0, 8), 16) * 1000;
+      if (!isNaN(timestamp) && timestamp > 0) return new Date(timestamp);
+    }
+    const matches = id.match(/\d{10,13}/);
+    if (matches) {
+      const num = Number(matches[0]);
+      const timestamp = num > 1e11 ? num : num * 1000;
+      if (!isNaN(timestamp)) return new Date(timestamp);
+    }
+  }
+
+  return new Date();
+}
+
+function formatOrderDate(dateVal, fallbackOrder = null) {
+  const d = parseDate(dateVal, fallbackOrder);
+  try {
     return d.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     });
   } catch {
-    return 'Jul 21, 2026';
+    return new Date().toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   }
 }
 
-function formatOrderTime(dateVal) {
-  if (!dateVal) return '12:07 PM';
+function formatOrderTime(dateVal, fallbackOrder = null) {
+  const d = parseDate(dateVal, fallbackOrder);
   try {
-    const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return '12:07 PM';
     return d.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
     });
   } catch {
-    return '12:07 PM';
+    return new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
   }
 }
 
-function formatOrderPrice(totalVal, items, bill) {
-  const computedBillAmount =
-    bill?.amount ??
-    bill?.total ??
-    ((parseFloat(bill?.productPrice) || 0) + (parseFloat(bill?.shippingFee) || 0));
-  const val = (totalVal != null && totalVal !== '' && Number(totalVal) > 0) ? totalVal : (computedBillAmount > 0 ? computedBillAmount : null);
+function formatOrderPrice(totalVal, items, bill, priceVal, amountVal) {
+  let num = null;
 
-  if (val != null && val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
-    return `Rs. ${Number(val).toLocaleString('en-US')}`;
+  if (bill) {
+    const p = parseFloat(bill.productPrice) || 0;
+    const s = parseFloat(bill.shippingFee) || 0;
+    const comp = p + s;
+    const bAmt = parseFloat(bill.amount) || 0;
+    const bTot = parseFloat(bill.total) || 0;
+
+    if (bAmt > 0) num = bAmt;
+    else if (bTot > 0) num = bTot;
+    else if (comp > 0) num = comp;
   }
-  if (Array.isArray(items) && items.length > 0) {
+
+  if (num == null || num <= 0) {
+    const t = parseFloat(totalVal) || parseFloat(priceVal) || parseFloat(amountVal) || 0;
+    if (t > 0) num = t;
+  }
+
+  if ((num == null || num <= 0) && Array.isArray(items) && items.length > 0) {
     const calculated = items.reduce((sum, item) => {
       const p = parseFloat(item?.price || item?.cost || item?.amount) || 0;
       const q = parseInt(item?.quantity || item?.qty, 10) || 1;
       return sum + p * q;
     }, 0);
-    if (calculated > 0) {
-      return `Rs. ${calculated.toLocaleString('en-US')}`;
-    }
+    if (calculated > 0) num = calculated;
+  }
+
+  if (num != null && num > 0) {
+    return `Rs. ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
   return 'Rs. 0.00';
 }
@@ -124,11 +186,15 @@ function mapApiOrderToView(o) {
   if (!o) return {};
   const riderLocation = normalizeRiderLocation(o.riderLocation);
   const createdAt = o.createdAt || o.date || o.timestamp || o.time;
-  const billTotal =
-    o.bill?.amount ??
-    o.bill?.total ??
-    ((parseFloat(o.bill?.productPrice) || 0) + (parseFloat(o.bill?.shippingFee) || 0));
-  const total = o.total ?? o.price ?? o.amount ?? (billTotal > 0 ? billTotal : null);
+
+  const bAmt = parseFloat(o.bill?.amount) || 0;
+  const bTot = parseFloat(o.bill?.total) || 0;
+  const bComp = (parseFloat(o.bill?.productPrice) || 0) + (parseFloat(o.bill?.shippingFee) || 0);
+  const oTot = parseFloat(o.total) || 0;
+  const oPrice = parseFloat(o.price) || 0;
+  const oAmt = parseFloat(o.amount) || 0;
+
+  const resolvedTotal = bAmt || bTot || bComp || oTot || oPrice || oAmt || null;
 
   return {
     id: o.id,
@@ -141,7 +207,9 @@ function mapApiOrderToView(o) {
     address: o.dropoff || o.address || o.deliveryAddress || '—',
     deliveryAddress: o.dropoff || o.deliveryAddress || o.address || '—',
     items: o.items,
-    total: total,
+    total: resolvedTotal,
+    price: resolvedTotal,
+    amount: resolvedTotal,
     bill: o.bill,
     pickup: o.pickup || o.store,
     dropoff: o.dropoff || o.address || o.deliveryAddress,
@@ -260,6 +328,26 @@ const OrderDetailsScreen = ({ navigation, route }) => {
       return () => clearInterval(poll);
     }, [loadLiveOrder])
   );
+
+  // Real-time Firestore snapshot listener for instant price & status updates from Rider
+  useEffect(() => {
+    if (!orderMongoId) return;
+
+    const unsubscribe = firestore()
+      .collection('orders')
+      .doc(orderMongoId)
+      .onSnapshot(
+        (docSnap) => {
+          if (docSnap && docSnap.exists) {
+            const data = docSnap.data();
+            setOrder(mapApiOrderToView({ id: docSnap.id, ...data }));
+          }
+        },
+        (err) => console.log('Order snapshot listener error:', err)
+      );
+
+    return () => unsubscribe();
+  }, [orderMongoId]);
 
   const statusLower = normalizeOrderStatus(order.rawStatus || order.status);
   const isPending = statusLower === 'pending';
@@ -924,7 +1012,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
                 <Ionicons name="calendar-outline" size={18} color="#64748B" />
                 <Text style={styles.infoLabel}>Date</Text>
               </View>
-              <Text style={styles.infoValue}>{formatOrderDate(order.createdAt || order.date)}</Text>
+              <Text style={styles.infoValue}>{formatOrderDate(order.createdAt || order.date, order)}</Text>
             </View>
 
             <View style={styles.infoRow}>
@@ -932,7 +1020,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
                 <Ionicons name="time-outline" size={18} color="#64748B" />
                 <Text style={styles.infoLabel}>Time</Text>
               </View>
-              <Text style={styles.infoValue}>{formatOrderTime(order.createdAt || order.date)}</Text>
+              <Text style={styles.infoValue}>{formatOrderTime(order.createdAt || order.date, order)}</Text>
             </View>
 
             <View style={styles.infoRow}>
@@ -980,7 +1068,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
                 <Ionicons name="cash-outline" size={20} color="#2EC4B6" />
                 <Text style={styles.totalLabel}>Total Price</Text>
               </View>
-              <Text style={styles.totalValue}>{formatOrderPrice(order.total, order.items, order.bill)}</Text>
+              <Text style={styles.totalValue}>{formatOrderPrice(order.total, order.items, order.bill, order.price, order.amount)}</Text>
             </View>
           </View>
 

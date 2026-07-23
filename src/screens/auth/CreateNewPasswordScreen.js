@@ -107,10 +107,13 @@ const CreateNewPasswordScreen = ({ route, navigation }) => {
         errorMessage = err.message;
       }
 
+      const isSecurityRedirect = errorMessage.includes('requires a direct reset link');
       setAlertConfig({
-        title: 'Reset Failed',
-        message: errorMessage,
-        type: 'error'
+        title: isSecurityRedirect ? 'Check Your Email ✉️' : 'Reset Failed',
+        message: isSecurityRedirect 
+          ? 'We have sent a secure password reset link to your email. Please check your inbox (and spam folder), click the link to set your password, then return here to log in.'
+          : errorMessage,
+        type: isSecurityRedirect ? 'success' : 'error'
       });
       setAlertVisible(true);
     } finally {

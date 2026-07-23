@@ -43,9 +43,10 @@ const clearPendingFcmToken = async () => {
 const debugAlert = (title, message) => {
   try {
     console.log(`[Firebase Debug] ${title}:`, message);
-    if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      Alert.alert(title, typeof message === 'string' ? message : JSON.stringify(message));
-    }
+    // Disabled visual popups to prevent blocking users when FCM/Play Services is temporarily unavailable
+    // if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    //   Alert.alert(title, typeof message === 'string' ? message : JSON.stringify(message));
+    // }
   } catch (e) {
     console.log('Error showing debug alert:', e);
   }
@@ -255,7 +256,7 @@ export const initializeFirebaseMessaging = async () => {
       tokenRefreshUnsubscribe();
     };
   } catch (error) {
-    console.error('Failed to initialize Firebase Messaging:', error?.message || error, error?.code);
+    console.warn('Failed to initialize Firebase Messaging:', error?.message || error, error?.code);
     debugAlert('Firebase initialization failed', error?.message || String(error));
   }
 };
