@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Dimensions,
   Platform,
   Alert,
+  Animated,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { BORDER_RADIUS } from '../../theme/spacing';
@@ -22,6 +23,7 @@ import { useNotificationUnread } from '../../context/NotificationUnreadContext';
 import { useUserProfile, getAvatarUri, getUserInitial } from '../../context/UserProfileContext';
 
 const { width, height } = Dimensions.get('window');
+const SIDEBAR_WIDTH = Math.min(width * 0.85, 340);
 
 const Header = ({
   navigation,
@@ -30,9 +32,48 @@ const Header = ({
   title,
   transparent = false,
 }) => {
-  const [sidebarVisible, setSidebarVisible] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
   const { unreadCount } = useNotificationUnread();
   const { user, stats } = useUserProfile();
+
+  const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+
+  const openSidebar = () => {
+    setModalVisible(true);
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const closeSidebar = (onComplete) => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: -SIDEBAR_WIDTH,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setModalVisible(false);
+      if (typeof onComplete === 'function') {
+        onComplete();
+      }
+    });
+  };
 
   const avatarUri = getAvatarUri(user);
   const displayName = user?.name || 'User';
@@ -97,46 +138,48 @@ const Header = ({
   };
 
   const handleMenuPress = (item) => {
-    setSidebarVisible(false);
-    if (item.screen === 'Notifications') {
-      navigateToNotifications();
-      return;
-    }
-    // Route Bills into the Profile stack when Profile is the parent navigator
-    if (item.screen === 'Bills' && navigation.getParent()) {
-      navigation.getParent().navigate('Profile', { screen: 'Bills' });
-      return;
-    }
-    if (item.screen === 'Profile' && navigation.getParent()) {
-      navigation.getParent().navigate('Profile', { screen: 'ProfileHome' });
-      return;
-    }
-    if (item.screen === 'Messages' && navigation.getParent()) {
-      navigation.getParent().navigate('Messages');
-      return;
-    }
-    if (item.screen) {
-      navigation.navigate(item.screen);
-    }
+    closeSidebar(() => {
+      if (item.screen === 'Notifications') {
+        navigateToNotifications();
+        return;
+      }
+      // Route Bills into the Profile stack when Profile is the parent navigator
+      if (item.screen === 'Bills' && navigation.getParent()) {
+        navigation.getParent().navigate('Profile', { screen: 'Bills' });
+        return;
+      }
+      if (item.screen === 'Profile' && navigation.getParent()) {
+        navigation.getParent().navigate('Profile', { screen: 'ProfileHome' });
+        return;
+      }
+      if (item.screen === 'Messages' && navigation.getParent()) {
+        navigation.getParent().navigate('Messages');
+        return;
+      }
+      if (item.screen) {
+        navigation.navigate(item.screen);
+      }
+    });
   };
 
   const handleStatPress = (label) => {
-    setSidebarVisible(false);
-    let filter = 'total';
-    if (label === 'Active') {
-      filter = 'active';
-    } else if (label === 'Completed') {
-      filter = 'completed';
-    }
+    closeSidebar(() => {
+      let filter = 'total';
+      if (label === 'Active') {
+        filter = 'active';
+      } else if (label === 'Completed') {
+        filter = 'completed';
+      }
 
-    if (navigation.getParent()) {
-      navigation.getParent().navigate('Profile', {
-        screen: 'OrderHistory',
-        params: { filter }
-      });
-    } else {
-      navigation.navigate('OrderHistory', { filter });
-    }
+      if (navigation.getParent()) {
+        navigation.getParent().navigate('Profile', {
+          screen: 'OrderHistory',
+          params: { filter }
+        });
+      } else {
+        navigation.navigate('OrderHistory', { filter });
+      }
+    });
   };
 
   const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
@@ -150,15 +193,16 @@ const Header = ({
         {
           text: 'Logout',
           style: 'destructive',
-          onPress: async () => {
-            setSidebarVisible(false);
-            try {
-              await authAPI.logout();
-            } catch (error) {
-              console.error('Logout error:', error);
-            } finally {
-              resetToAuth();
-            }
+          onPress: () => {
+            closeSidebar(async () => {
+              try {
+                await authAPI.logout();
+              } catch (error) {
+                console.error('Logout error:', error);
+              } finally {
+                resetToAuth();
+              }
+            });
           },
         },
       ]
@@ -174,17 +218,22 @@ const Header = ({
 
   const renderSidebar = () => (
     <Modal
-      animationType="slide"
+      animationType="none"
       transparent={true}
-      visible={sidebarVisible}
-      onRequestClose={() => setSidebarVisible(false)}
+      visible={modalVisible}
+      onRequestClose={() => closeSidebar()}
     >
       <View style={styles.sidebarOverlay}>
-        <View style={styles.sidebarContainer}>
+        <Animated.View
+          style={[
+            styles.sidebarContainer,
+            { transform: [{ translateX: slideAnim }] },
+          ]}
+        >
           {/* Close Button */}
           <TouchableOpacity
             style={styles.sidebarCloseButton}
-            onPress={() => setSidebarVisible(false)}
+            onPress={() => closeSidebar()}
           >
             <Ionicons name="arrow-forward-outline" size={22} color="#fff" />
           </TouchableOpacity>
@@ -279,13 +328,20 @@ const Header = ({
               <Text style={styles.versionText}>Version 1.0.0</Text>
             </View>
           </ScrollView>
-        </View>
+        </Animated.View>
 
         <TouchableOpacity
-          style={styles.sidebarBackdrop}
+          style={{ flex: 1 }}
           activeOpacity={1}
-          onPress={() => setSidebarVisible(false)}
-        />
+          onPress={() => closeSidebar()}
+        >
+          <Animated.View
+            style={[
+              styles.sidebarBackdrop,
+              { opacity: backdropOpacity },
+            ]}
+          />
+        </TouchableOpacity>
       </View>
     </Modal>
   );
@@ -310,9 +366,10 @@ const Header = ({
           onPress={
             showBackButton
               ? onBackPress || (() => navigation.goBack())
-              : () => setSidebarVisible(true)
+              : () => openSidebar()
           }
         >
+
           {showBackButton ? (
             <Ionicons name="arrow-back" size={24} color="#fff" />
           ) : (

@@ -704,6 +704,35 @@ export const categoriesAPI = {
   },
 };
 
+// Stores API with Location & Category Geo-filtering
+export const storesAPI = {
+  getByAreaAndCategory: async (areaName, categoryName) => {
+    try {
+      if (!areaName) return { success: true, data: [] };
+
+      // 1. Query Firestore 'stores' collection strictly by selected area
+      const snap = await firestore()
+        .collection('stores')
+        .where('area', '==', areaName)
+        .get();
+
+      const data = [];
+      snap.forEach(doc => {
+        const store = doc.data();
+        if (!categoryName || !store.category || store.category.toLowerCase().includes(categoryName.toLowerCase()) || categoryName.toLowerCase().includes(store.category.toLowerCase())) {
+          data.push({ id: doc.id, ...store });
+        }
+      });
+
+      return { success: true, data };
+    } catch (err) {
+      console.warn('storesAPI getByAreaAndCategory error:', err);
+      return { success: false, data: [] };
+    }
+  },
+};
+
+
 // Helper function to resolve exact non-zero bill total
 const resolveBillAmount = (bill, order) => {
   const pPrice = parseFloat(bill?.productPrice) || 0;
@@ -1038,6 +1067,8 @@ export default {
   users: usersAPI,
   areas: areasAPI,
   categories: categoriesAPI,
+  stores: storesAPI,
   bills: billsAPI,
   chat: chatAPI,
 };
+

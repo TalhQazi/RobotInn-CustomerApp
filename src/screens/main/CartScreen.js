@@ -34,12 +34,14 @@ const CartScreen = ({ navigation }) => {
     const items = await getData(ASYNC_STORAGE_KEYS.CART) || [];
     if (items.length > 0) {
       if (items[0].items) {
-        // New format - each item is an order with items array
-        setCartOrders(items);
+        // Reverse-chronological order (LIFO): Latest items at Index 0
+        const sortedOrders = [...items].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        setCartOrders(sortedOrders);
         // Flatten items for display
-        const allItems = items.flatMap(order => order.items || []);
+        const allItems = sortedOrders.flatMap(order => order.items || []);
         setCartItems(allItems);
       } else {
+
         // Old format - direct items array, convert it to the new order format
         const mockOrder = {
           id: `mock-ord-${Date.now()}`,

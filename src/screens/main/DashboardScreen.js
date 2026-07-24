@@ -6,7 +6,8 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
 import { COLORS, GRADIENTS } from '../../theme/colors';
-import { ordersAPI, areasAPI, usersAPI, categoriesAPI } from '../../services/api';
+import { ordersAPI, areasAPI, usersAPI, categoriesAPI, storesAPI } from '../../services/api';
+
 import { getCurrentLocationWithAddress } from '../../utils/location';
 import { SPACING, BORDER_RADIUS } from '../../theme/spacing';
 import Header from '../../components/common/Header';
@@ -14,79 +15,222 @@ import Card from '../../components/common/Card';
 import ThemedAlert from '../../components/common/ThemedAlert';
 import { getData, storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
+import { fetchNearbyStoresFromGoogle } from '../../utils/maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 
 
-// ─── Static fallback areas ───────────────────────────────────────────────────
-const STATIC_AREAS = {
-  'F-6': ['KFC F-6', 'Hardees F-6', 'Tehzeeb Bakers'],
-  'F-7': ['KFC F-7', 'Pizza Hut F-7', 'Subway F-7'],
-  'F-8': ["McDonald's F-8", "Domino's Pizza", 'Ginyaki'],
-  'F-10': ['KFC F-10', 'Pizza Hut F-10', 'Gloria Jeans'],
-  'F-11': ["McDonald's F-11", 'Hardees F-11'],
-  'G-6': ['Tehzeeb Bakers', 'Loafology'],
-  'G-7': ['KFC G-7', 'Subway'],
-  'G-8': ["McDonald's G-8", 'Pizza Hut'],
-  'G-9': ['KFC G-9', 'Hardees', 'Ginyaki'],
-  'G-10': ["McDonald's G-10", 'Burger King', 'Subway'],
-  'G-11': ['KFC G-11', 'Pizza Hut'],
-  'E-7': ['Tehzeeb Bakers', 'Coffee Republic'],
-  'E-8': ['KFC E-8', 'Hardees'],
-  'E-9': ["McDonald's", 'Subway'],
-  'E-11': ['KFC E-11', 'Pizza Hut'],
-  'I-8': ['Hardees I-8', 'Gloria Jeans'],
-  'I-9': ['KFC I-9'],
-  'I-10': ["McDonald's I-10"],
-  'DHA Phase 1': ['KFC DHA', 'Hardees DHA', 'Pizza Hut'],
-  'DHA Phase 2': ["McDonald's", 'Subway'],
-  'Bahria Phase 7': ['KFC Bahria', 'Hardees'],
-  'Bahria Phase 8': ["McDonald's Bahria"],
-  'Gulberg Residencia': ['Tehzeeb Bakers', 'Coffee Planet'],
-  'Bani Gala': ['KFC Bani Gala'],
-};
+// ─── Default Islamabad sector list ─────────────────────────────────────────────
+const DEFAULT_ISLAMABAD_AREAS = [
+  'F-6', 'F-7', 'F-8', 'F-10', 'F-11', 'G-6', 'G-7', 'G-8', 'G-9', 'G-10', 'G-11',
+  'I-8', 'I-9', 'I-10', 'E-7', 'E-8', 'E-9', 'E-11', 'DHA Phase 1', 'DHA Phase 2',
+  'Bahria Phase 7', 'Bahria Phase 8', 'Gulberg Residencia', 'Bani Gala',
+];
+
 
 const DEFAULT_CATEGORIES = [
-  { id: 'cat1', name: 'Groceries', icon: '🛒' },
-  { id: 'cat2', name: 'Fresh Bazaar', icon: '🥬' },
-  { id: 'cat3', name: 'Health & Beauty', icon: '💄' },
-  { id: 'cat4', name: 'Pharmacy', icon: '💊' }
+  { id: 'cat1', name: 'Groceries' },
+  { id: 'cat2', name: 'Fresh Bazaar' },
+  { id: 'cat3', name: 'Meat' },
+  { id: 'cat4', name: 'Cosmetics' },
+  { id: 'cat5', name: 'Pharmacy' },
+  { id: 'cat6', name: 'Fitness' },
+  { id: 'cat7', name: 'House Decor' },
 ];
+
+const CATEGORY_3D_ASSETS = {
+  Groceries: require('../../assets/images/3d_categories/groceries.png'),
+  'Fresh Bazaar': require('../../assets/images/3d_categories/fresh_bazaar.png'),
+  Meat: require('../../assets/images/3d_categories/meat.png'),
+  Cosmetics: require('../../assets/images/3d_categories/cosmetics.png'),
+  Pharmacy: require('../../assets/images/3d_categories/pharmacy.png'),
+  Fitness: require('../../assets/images/3d_categories/fitness.png'),
+  'House Decor': require('../../assets/images/3d_categories/house_decor.png'),
+};
+
+const get3DCategoryAsset = (name) => {
+  if (!name) return CATEGORY_3D_ASSETS.Groceries;
+  const n = name.toLowerCase();
+  if (n.includes('grocer')) return CATEGORY_3D_ASSETS.Groceries;
+  if (n.includes('fresh') || n.includes('bazaar')) return CATEGORY_3D_ASSETS['Fresh Bazaar'];
+  if (n.includes('meat') || n.includes('butcher')) return CATEGORY_3D_ASSETS.Meat;
+  if (n.includes('cosmetic') || n.includes('beauty')) return CATEGORY_3D_ASSETS.Cosmetics;
+  if (n.includes('pharmacy') || n.includes('health') || n.includes('medical')) return CATEGORY_3D_ASSETS.Pharmacy;
+  if (n.includes('fitness') || n.includes('gym')) return CATEGORY_3D_ASSETS.Fitness;
+  if (n.includes('decor') || n.includes('house')) return CATEGORY_3D_ASSETS['House Decor'];
+  return CATEGORY_3D_ASSETS.Groceries;
+};
+
+
+
+
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SECTION_SIDE_PADDING = SPACING.md;
-const SLIDER_CARD_WIDTH = SCREEN_WIDTH - SECTION_SIDE_PADDING * 2 - 24;
+
+// ─── Single card hero banner width ──────────────────────────────────────────
+const HERO_CARD_WIDTH = SCREEN_WIDTH - 32;
+const HERO_CARD_GAP = 16;
+const HERO_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
+const SLIDER_CARD_WIDTH = Math.round(SCREEN_WIDTH * 0.72);
+
+
+const BRAND_3D_LOGOS = {
+  '1': require('../../assets/images/3d_brands/burger_king.png'),
+  '2': require('../../assets/images/3d_brands/pizza_hut.png'),
+  '3': require('../../assets/images/3d_brands/kfc.png'),
+  '4': require('../../assets/images/3d_brands/mcdonalds.png'),
+  '5': require('../../assets/images/3d_brands/subway.png'),
+  '6': require('../../assets/images/3d_brands/dunkin.png'),
+  '7': require('../../assets/images/3d_brands/baskin_robbins.png'),
+};
 
 // ─── Hero Cards ──────────────────────────────────────────────────────────────
 const HERO_CARDS = [
-  { id: '1', title: 'Burger King',    subtitle: 'Flame Grilled Burgers', image: '🍔', rating: '4.5', deliveryTime: '25-35', deliveryType: 'Free' },
-  { id: '2', title: 'Pizza Hut',      subtitle: 'Delicious Pizzas',      image: '🍕', rating: '4.3', deliveryTime: '30-45', deliveryType: 'Free' },
-  { id: '3', title: 'KFC',            subtitle: 'Finger Lickin Good',    image: '🍗', rating: '4.4', deliveryTime: '25-40', deliveryType: 'Free' },
-  { id: '4', title: "McDonald's",     subtitle: "I'm Lovin It",          image: '🍟', rating: '4.2', deliveryTime: '20-30', deliveryType: 'Free' },
-  { id: '5', title: 'Subway',         subtitle: 'Fresh Sandwiches',      image: '🥪', rating: '4.6', deliveryTime: '15-25', deliveryType: 'Free' },
-  { id: '6', title: 'Dunkin',         subtitle: 'Coffee & Donuts',       image: '🍩', rating: '4.5', deliveryTime: '20-35', deliveryType: 'Free' },
-  { id: '7', title: 'Baskin Robbins', subtitle: 'Ice Cream Delights',    image: '🍦', rating: '4.7', deliveryTime: '15-20', deliveryType: 'Free' },
+  { id: '1', title: 'Burger King', subtitle: 'Flame Grilled Burgers', image: '🍔', image3D: BRAND_3D_LOGOS['1'], rating: '4.5', deliveryTime: '25-35', deliveryType: 'Free' },
+  { id: '2', title: 'Pizza Hut', subtitle: 'Delicious Pizzas', image: '🍕', image3D: BRAND_3D_LOGOS['2'], rating: '4.3', deliveryTime: '30-45', deliveryType: 'Free' },
+  { id: '3', title: 'KFC', subtitle: 'Finger Lickin Good', image: '🍗', image3D: BRAND_3D_LOGOS['3'], rating: '4.4', deliveryTime: '25-40', deliveryType: 'Free' },
+  { id: '4', title: "McDonald's", subtitle: "I'm Lovin It", image: '🍟', image3D: BRAND_3D_LOGOS['4'], rating: '4.2', deliveryTime: '20-30', deliveryType: 'Free' },
+  { id: '5', title: 'Subway', subtitle: 'Fresh Sandwiches', image: '🥪', image3D: BRAND_3D_LOGOS['5'], rating: '4.6', deliveryTime: '15-25', deliveryType: 'Free' },
+  { id: '6', title: 'Dunkin', subtitle: 'Coffee & Donuts', image: '🍩', image3D: BRAND_3D_LOGOS['6'], rating: '4.5', deliveryTime: '20-35', deliveryType: 'Free' },
+  { id: '7', title: 'Baskin Robbins', subtitle: 'Ice Cream Delights', image: '🍦', image3D: BRAND_3D_LOGOS['7'], rating: '4.7', deliveryTime: '15-20', deliveryType: 'Free' },
 ];
 const HERO_LOOP_CARDS = [HERO_CARDS[HERO_CARDS.length - 1], ...HERO_CARDS, HERO_CARDS[0]];
 
+
 // ─── Store type options ───────────────────────────────────────────────────────
 const STORE_TYPES = {
-  FEED:   'feed',
+  FEED: 'feed',
   CUSTOM: 'custom',
-  ROBOT:  'robot',
+  ROBOT: 'robot',
 };
 
+// ─── Keyword & pattern-based automatic category detection ───────────────────
+const PHARMACY_KEYWORDS = [
+  'disprean', 'disprin', 'dispirin', 'panadol', 'brufen', 'paracetamol', 'medicine', 'medicines',
+  'tablet', 'tablets', 'syrup', 'syrups', 'bandaid', 'bandage', 'vitamin', 'vitamins', 'health',
+  'pharmacy', 'medical', 'dettol', 'sanitizer', 'mask', 'insulin', 'cream', 'lotion', 'ointment',
+  'capsule', 'capsules', 'antibiotic', 'painkiller', 'aspirin', 'ponstan', 'flagyl', 'augmentin',
+  'rigix', 'gaviscon', 'secnidazole', 'calpol', 'entamizole', 'arinac', 'surbex', 'cac', 'nuberol',
+  'flynex', 'strip', 'thermometer', 'pills', 'pill', 'injection', 'injections', 'drops', 'drop',
+  'avomine', 'gravinate', 'polyfax', 'amoxil', 'cipro', 'zithromax', 'klacid', 'velosef', 'famila',
+  'tylenol', 'advil', 'aleve', 'benadryl', 'ventolin', 'cough', 'cold', 'fever', 'pharma', 'chemists'
+];
+
+const PHARMACY_SUFFIXES = [
+  'prin', 'prean', 'pirin', 'adol', 'fen', 'stan', 'nac', 'bex', 'rol', 'nex',
+  'zole', 'cillin', 'mycin', 'clovir', 'statin', 'sone', 'done', 'pam', 'lam', 'mine'
+];
+
+const MEAT_KEYWORDS = [
+  'meat', 'chicken', 'mutton', 'beef', 'lamb', 'fish', 'prawn', 'butcher', 'meat shop',
+  'mince', 'keema', 'qima', 'steak', 'wings', 'boneless', 'mutton leg', 'chops', 'kabab'
+];
+
+const GROCERY_KEYWORDS = [
+  'milk', 'bread', 'egg', 'eggs', 'butter', 'cheese', 'rice', 'flour', 'atta', 'sugar',
+  'salt', 'oil', 'ghee', 'tea', 'patti', 'soap', 'detergent', 'surf', 'grocer', 'groceries',
+  'supermarket', 'biscuit', 'biscuits', 'chips', 'nestle', 'olpers', 'dairy', 'tissue',
+  'shampoo', 'paste', 'colgate', 'toothpaste', 'cleaner', 'washing'
+];
+
+const FRESH_KEYWORDS = [
+  'apple', 'apples', 'banana', 'bananas', 'mango', 'mangoes', 'orange', 'oranges',
+  'potato', 'potatoes', 'onion', 'onions', 'tomato', 'tomatoes', 'vegetable', 'vegetables',
+  'fruit', 'fruits', 'sabzi', 'phool', 'bazaar', 'fresh', 'coriander', 'mint', 'lemon',
+  'ginger', 'garlic', 'cucumber', 'gobi', 'palak', 'bhindi', 'kera', 'aloo', 'pyaz'
+];
+
+const COSMETICS_KEYWORDS = [
+  'cosmetics', 'lipstick', 'makeup', 'makeup-kit', 'foundation', 'concealer', 'mascara',
+  'eyeliner', 'blush', 'nailpaint', 'nail polish', 'perfume', 'fragrance', 'lotion',
+  'skincare', 'facewash', 'face wash', 'serum', 'beauty', 'eyeshadow', 'compact', 'moisturizer'
+];
+
+const FITNESS_KEYWORDS = [
+  'fitness', 'gym', 'protein', 'whey', 'creatine', 'supplements', 'supplement',
+  'dumbbell', 'workout', 'bcaa', 'preworkout', 'shaker', 'gym wear', 'fitness gear',
+  'treadmill', 'resistance band', 'weights', 'nutrition'
+];
+
+const HOUSE_DECOR_KEYWORDS = [
+  'house decor', 'decoration', 'decor', 'sofa', 'lamp', 'furniture', 'curtains',
+  'curtain', 'interior', 'vase', 'wall art', 'painting', 'rug', 'carpet', 'cushion',
+  'flower', 'flowers', 'lights', 'party', 'home decor', 'frames', 'crafts', 'gift'
+];
+
+const detectItemCategory = (itemText = '') => {
+  if (!itemText) return 'Food';
+  const textLower = itemText.toLowerCase().trim();
+
+  // 1. Direct keyword match
+  if (PHARMACY_KEYWORDS.some(kw => textLower.includes(kw))) {
+    return 'Pharmacy';
+  }
+
+  // 2. Pharmacy pattern / suffix match
+  const words = textLower.split(/\s+/);
+  for (const word of words) {
+    if (word.length >= 4 && PHARMACY_SUFFIXES.some(suf => word.endsWith(suf))) {
+      return 'Pharmacy';
+    }
+  }
+
+  // 3. Meat match
+  if (MEAT_KEYWORDS.some(kw => textLower.includes(kw))) {
+    return 'Meat';
+  }
+
+  // 4. Cosmetics match
+  if (COSMETICS_KEYWORDS.some(kw => textLower.includes(kw))) {
+    return 'Cosmetics';
+  }
+
+  // 5. Fitness match
+  if (FITNESS_KEYWORDS.some(kw => textLower.includes(kw))) {
+    return 'Fitness';
+  }
+
+  // 6. House Decor match
+  if (HOUSE_DECOR_KEYWORDS.some(kw => textLower.includes(kw))) {
+    return 'House Decor';
+  }
+
+  // 7. Grocery match
+  if (GROCERY_KEYWORDS.some(kw => textLower.includes(kw))) {
+    return 'Groceries';
+  }
+
+  // 8. Fresh Produce match
+  if (FRESH_KEYWORDS.some(kw => textLower.includes(kw))) {
+    return 'Fresh Bazaar';
+  }
+
+  return 'Food';
+};
+
+
+
+
+
 // ─── Helper: build a blank order item ────────────────────────────────────────
-const newOrderItem = (text = '', category = 'Food') => ({
-  id: Date.now().toString() + Math.random(),
-  text,
-  category,
-  editing: false,
-  editText: text,
-  storeType: null,       // STORE_TYPES.FEED | CUSTOM | ROBOT | null
-  selectedStore: '',     // name of the chosen feed-store
-  customStore: '',       // typed custom store
-  customStoreConfirmed: false,
-});
+const newOrderItem = (text = '', category = null) => {
+  const cat = category || detectItemCategory(text);
+  return {
+    id: Date.now().toString() + Math.random(),
+    text,
+    category: cat,
+    editing: false,
+    editText: text,
+    storeType: null,       // STORE_TYPES.FEED | CUSTOM | ROBOT | null
+    selectedStore: '',     // name of the chosen feed-store
+    customStore: '',       // typed custom store
+    customStoreConfirmed: false,
+  };
+};
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 const getBrandLogo = (storeName) => {
@@ -123,109 +267,97 @@ const DashboardScreen = ({ navigation, route }) => {
   };
 
   // Animations
-  const fadeAnim           = useRef(new Animated.Value(0)).current;
-  const scaleAnim          = useRef(new Animated.Value(0.95)).current;
-  const slideAnim          = useRef(new Animated.Value(50)).current;
-  const currentOrdersAnim  = useRef(new Animated.Value(0)).current;
-  const orderInterestAnim  = useRef(new Animated.Value(0)).current;
-  const recentOrdersAnim   = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const currentOrdersAnim = useRef(new Animated.Value(0)).current;
+  const orderInterestAnim = useRef(new Animated.Value(0)).current;
+  const recentOrdersAnim = useRef(new Animated.Value(0)).current;
 
   // Hero Carousel
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0);
-  const heroScrollRef   = useRef(null);
+  const heroScrollRef = useRef(null);
   const heroIntervalRef = useRef(null);
   const heroPageIndexRef = useRef(1);
-  const scrollViewRef   = useRef(null);
+  const scrollViewRef = useRef(null);
 
   // Slider dot tracking
   const [currentOrderSliderIndex, setCurrentOrderSliderIndex] = useState(0);
-  const [recentOrderSliderIndex,  setRecentOrderSliderIndex]  = useState(0);
+  const [recentOrderSliderIndex, setRecentOrderSliderIndex] = useState(0);
 
   // ── Area selection (moved to top) ─────────────────────────────────────────
-  const [selectedArea,      setSelectedArea]      = useState('');
-  const [showAreaDropdown,  setShowAreaDropdown]  = useState(false);
-  const [areaSearch,        setAreaSearch]        = useState('');
-  const [areasData,         setAreasData]         = useState([]);
-  const [areasLoading,      setAreasLoading]      = useState(false);
+  const [selectedArea, setSelectedArea] = useState('');
+  const [showAreaDropdown, setShowAreaDropdown] = useState(false);
+  const [areaSearch, setAreaSearch] = useState('');
+  const [areasData, setAreasData] = useState([]);
+  const [areasLoading, setAreasLoading] = useState(false);
   const areasLoadedRef = useRef(false);
 
   // ── Order items (each carries its own store choice) ───────────────────────
-  const [orderItems,   setOrderItems]   = useState([]);
-  const [currentItem,  setCurrentItem]  = useState('');
+  const [orderItems, setOrderItems] = useState([]);
+  const [currentItem, setCurrentItem] = useState('');
 
   // Store picker modal (for feed-store list per item)
   const [storePicker, setStorePicker] = useState({ visible: false, itemId: null });
   const [storeSearch, setStoreSearch] = useState('');
 
   // ── Address ───────────────────────────────────────────────────────────────
-  const [address,               setAddress]               = useState('');
-  const [addressCoords,         setAddressCoords]         = useState(null);
-  const [savedAddresses,        setSavedAddresses]        = useState([]);
-  const [selectedSavedAddress,  setSelectedSavedAddress]  = useState(null);
-  const [showAddressModal,      setShowAddressModal]      = useState(false);
-  const [showManualAddressInput,setShowManualAddressInput]= useState(false);
-  const [addressLocationLoading,setAddressLocationLoading]= useState(false);
+  const [address, setAddress] = useState('');
+  const [addressCoords, setAddressCoords] = useState(null);
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedSavedAddress, setSelectedSavedAddress] = useState(null);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showManualAddressInput, setShowManualAddressInput] = useState(false);
+  const [addressLocationLoading, setAddressLocationLoading] = useState(false);
 
-  // ── Categories ─────────────────────────────────────────────────────────────
+  // ── Categories & Google Places Stores ─────────────────────────────────────
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [googleStores, setGoogleStores] = useState([]);
+  const [loadingGoogleStores, setLoadingGoogleStores] = useState(false);
+
 
   // ── Orders ────────────────────────────────────────────────────────────────
-  const [recentOrders,  setRecentOrders]  = useState([]);
+  const [recentOrders, setRecentOrders] = useState([]);
   const [currentOrders, setCurrentOrders] = useState([]);
   const [cancellingOrderId, setCancellingOrderId] = useState(null);
 
   const isPendingOrder = (status) => {
-    const s = String(status || '').toLowerCase().trim();
+    if (!status) return true;
+    const s = String(status).toLowerCase().trim();
     return s !== 'delivered' && s !== 'completed' && s !== 'cancelled';
   };
 
-  const cancelOrder = async (order) => {
-    const orderId = order.id || order.orderId || order._id;
-    if (!orderId) return;
+  const promptCancelOrder = (order) => {
+    const targetId = order.id || order.orderId || order._id;
+    if (!targetId) return;
 
-    setCancellingOrderId(orderId);
+    showThemedAlert({
+      title: 'Cancel Order',
+      message: `Are you sure you want to cancel order #${order.orderId?.slice(-6) || order.id?.slice(-6) || 'this order'}?`,
+      buttons: [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes, Cancel', style: 'destructive', onPress: () => handleCancelOrder(targetId) },
+      ],
+    });
+  };
+
+  const handleCancelOrder = async (orderId) => {
     try {
-      const response = await ordersAPI.cancel(orderId);
-      if (response.success) {
-        setCurrentOrders((prev) => prev.filter((o) => (o.id || o.orderId || o._id) !== orderId));
-        setRecentOrders((prev) => prev.map((o) => {
-          const currentId = o.id || o.orderId || o._id;
-          return currentId === orderId ? { ...o, status: 'cancelled' } : o;
-        }));
-
-        showThemedAlert({
-          title: 'Order Cancelled',
-          message: `Order #${order.orderId?.slice(-6) || order.id?.slice(-6)} has been cancelled successfully.`,
-          buttons: [{ text: 'OK', style: 'cancel' }]
-        });
+      setCancellingOrderId(orderId);
+      const res = await ordersAPI.cancelOrder(orderId, 'Cancelled by customer');
+      if (res.success) {
+        showThemedAlert({ title: 'Order Cancelled', message: 'Your order has been cancelled successfully.' });
+        fetchDashboardData();
       } else {
-        showThemedAlert({
-          title: 'Cancel failed',
-          message: response.message || 'Unable to cancel this order. Please try again.',
-          buttons: [{ text: 'OK', style: 'cancel' }]
-        });
+        showThemedAlert({ title: 'Error', message: res.error || 'Failed to cancel order.' });
       }
-    } catch (error) {
-      showThemedAlert({
-        title: 'Cancel failed',
-        message: error?.message || 'Unable to cancel this order. Please try again.',
-        buttons: [{ text: 'OK', style: 'cancel' }]
-      });
+    } catch (err) {
+      showThemedAlert({ title: 'Error', message: err.message || 'Error cancelling order.' });
     } finally {
       setCancellingOrderId(null);
     }
-  };
-
-  const promptCancelOrder = (order) => {
-    showThemedAlert({
-      title: 'Cancel Order',
-      message: `Are you sure you want to cancel order #${order.orderId?.slice(-6) || order.id?.slice(-6) || 'N/A'}? This can only be cancelled while pending.`,
-      buttons: [
-        { text: 'No', style: 'cancel' },
-        { text: 'Yes, Cancel', onPress: () => cancelOrder(order) }
-      ]
-    });
   };
 
   // ── Fetch areas ───────────────────────────────────────────────────────────
@@ -268,24 +400,10 @@ const DashboardScreen = ({ navigation, route }) => {
     fetchCategories();
   }, []);
 
-  const handleCategoryPress = (categoryName) => {
-    if (!selectedArea) {
-      showThemedAlert({
-        title: 'Select Area First',
-        message: 'Please select your area first before choosing a category.',
-        buttons: [{ text: 'OK', style: 'cancel' }]
-      });
-      return;
-    }
-    setOrderItems((prev) => [...prev, newOrderItem(`${categoryName} items`, categoryName)]);
-    // Scroll down to the order builder card
-    scrollViewRef.current?.scrollTo({ y: 450, animated: true });
-  };
-
   // ── Hero carousel init ────────────────────────────────────────────────────
   useEffect(() => {
     const t = setTimeout(() => {
-      heroScrollRef.current?.scrollTo({ x: SCREEN_WIDTH, animated: false });
+      heroScrollRef.current?.scrollTo({ x: HERO_SNAP_INTERVAL, animated: false });
       heroPageIndexRef.current = 1;
       setCurrentHeroIndex(0);
     }, 0);
@@ -296,27 +414,27 @@ const DashboardScreen = ({ navigation, route }) => {
     heroIntervalRef.current = setInterval(() => {
       const lastLoopPageIndex = HERO_CARDS.length + 1;
       const next = Math.min(heroPageIndexRef.current + 1, lastLoopPageIndex);
-      heroScrollRef.current?.scrollTo({ x: next * SCREEN_WIDTH, animated: true });
+      heroScrollRef.current?.scrollTo({ x: next * HERO_SNAP_INTERVAL, animated: true });
       heroPageIndexRef.current = next;
     }, 5000);
     return () => { if (heroIntervalRef.current) clearInterval(heroIntervalRef.current); };
   }, []);
 
   const handleHeroScroll = (e) => {
-    const pageIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    const pageIndex = Math.round(e.nativeEvent.contentOffset.x / HERO_SNAP_INTERVAL);
     setCurrentHeroIndex((pageIndex - 1 + HERO_CARDS.length) % HERO_CARDS.length);
   };
 
   const handleHeroScrollEnd = (e) => {
-    const pageIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    const pageIndex = Math.round(e.nativeEvent.contentOffset.x / HERO_SNAP_INTERVAL);
     if (pageIndex === 0) {
-      heroScrollRef.current?.scrollTo({ x: HERO_CARDS.length * SCREEN_WIDTH, animated: false });
+      heroScrollRef.current?.scrollTo({ x: HERO_CARDS.length * HERO_SNAP_INTERVAL, animated: false });
       heroPageIndexRef.current = HERO_CARDS.length;
       setCurrentHeroIndex(HERO_CARDS.length - 1);
       return;
     }
     if (pageIndex === HERO_CARDS.length + 1) {
-      heroScrollRef.current?.scrollTo({ x: SCREEN_WIDTH, animated: false });
+      heroScrollRef.current?.scrollTo({ x: HERO_SNAP_INTERVAL, animated: false });
       heroPageIndexRef.current = 1;
       setCurrentHeroIndex(0);
       return;
@@ -326,15 +444,18 @@ const DashboardScreen = ({ navigation, route }) => {
 
   // ── Entrance animations ───────────────────────────────────────────────────
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     Animated.parallel([
-      Animated.timing(fadeAnim,          { toValue: 1, duration: 800, useNativeDriver: true }),
-      Animated.spring(scaleAnim,         { toValue: 1, friction: 8, tension: 40, useNativeDriver: true }),
-      Animated.timing(slideAnim,         { toValue: 0, duration: 600, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 40, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
       Animated.timing(currentOrdersAnim, { toValue: 1, duration: 600, delay: 200, useNativeDriver: true }),
       Animated.timing(orderInterestAnim, { toValue: 1, duration: 600, delay: 400, useNativeDriver: true }),
-      Animated.timing(recentOrdersAnim,  { toValue: 1, duration: 600, delay: 600, useNativeDriver: true }),
+      Animated.timing(recentOrdersAnim, { toValue: 1, duration: 600, delay: 600, useNativeDriver: true }),
     ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
   // ── Fetch dashboard data ──────────────────────────────────────────────────
   const fetchDashboardData = useCallback(async () => {
@@ -384,31 +505,34 @@ const DashboardScreen = ({ navigation, route }) => {
 
   // ── Area helpers ──────────────────────────────────────────────────────────
   const getAreasList = () =>
-    areasData.length > 0 ? areasData.map(a => a.name) : Object.keys(STATIC_AREAS);
+    areasData.length > 0 ? areasData.map(a => a.name) : DEFAULT_ISLAMABAD_AREAS;
+
 
   const filteredAreas = getAreasList().filter(a =>
     a.toLowerCase().includes(areaSearch.toLowerCase()));
 
   const getStoresForArea = (itemCategory) => {
     if (!selectedArea) return [];
-    const area = areasData.find(a => a.name === selectedArea);
-    if (area?.stores?.length) {
-      return area.stores
+    const cat = itemCategory || 'Food';
+    const catLower = cat.toLowerCase();
+
+    // Query backend areasData if stores are mapped directly on area objects
+    const areaObj = areasData.find(a => a.name === selectedArea);
+    if (areaObj?.stores?.length) {
+      return areaObj.stores
         .filter(s => {
-          if (!itemCategory || itemCategory === 'Food') {
-            return s.type === 'Food' || s.type === 'Food Store' || !s.type;
-          }
-          return s.type === itemCategory;
+          if (!s.type) return catLower.includes('food');
+          const sType = s.type.toLowerCase();
+          return sType.includes(catLower) || catLower.includes(sType);
         })
         .map(s => s.name);
     }
-    
-    // Fallback to static food points
-    if (!itemCategory || itemCategory === 'Food') {
-      return STATIC_AREAS[selectedArea] || [];
-    }
+
     return [];
   };
+
+
+
 
   const currentPickerItem = storePicker.itemId ? orderItems.find(i => i.id === storePicker.itemId) : null;
   const currentPickerCategory = currentPickerItem ? (currentPickerItem.category || 'Food') : 'Food';
@@ -418,26 +542,77 @@ const DashboardScreen = ({ navigation, route }) => {
     store.toLowerCase().includes(storeSearch.toLowerCase())
   );
 
+  const [backendStores, setBackendStores] = useState([]);
+
+  // ── Fetch Google Places & Backend real stores for selected Area & Category ─
+  useEffect(() => {
+    if (storePicker.visible && currentPickerCategory && selectedArea) {
+      setLoadingGoogleStores(true);
+
+      // 1. Query Backend Database for stores in selectedArea + currentPickerCategory
+      storesAPI.getByAreaAndCategory(selectedArea, currentPickerCategory)
+        .then(res => {
+          if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+            setBackendStores(res.data.map(s => ({ name: s.name, address: s.address, isBackendStore: true })));
+          } else {
+            setBackendStores([]);
+          }
+        })
+        .catch(err => console.warn('Backend stores fetch error:', err));
+
+      // 2. Query Google Places API for real stores in selectedArea + currentPickerCategory
+      fetchNearbyStoresFromGoogle(currentPickerCategory, selectedArea)
+        .then(results => setGoogleStores(results))
+        .catch(err => console.warn('Google Places fetch error:', err))
+        .finally(() => setLoadingGoogleStores(false));
+    } else {
+      setGoogleStores([]);
+      setBackendStores([]);
+    }
+  }, [storePicker.visible, currentPickerCategory, selectedArea]);
+
+  const combinedStoreList = React.useMemo(() => {
+    const staticStores = filteredStoreOptions.map(name => ({ name, isGoogleStore: false }));
+    const filteredBackend = backendStores
+      .filter(b => b.name.toLowerCase().includes(storeSearch.toLowerCase()))
+      .filter(b => !staticStores.some(s => s.name.toLowerCase() === b.name.toLowerCase()));
+
+    const filteredGoogle = googleStores
+      .filter(g => g.name.toLowerCase().includes(storeSearch.toLowerCase()))
+      .filter(g => !staticStores.some(s => s.name.toLowerCase() === g.name.toLowerCase()))
+      .filter(g => !filteredBackend.some(b => b.name.toLowerCase() === g.name.toLowerCase()));
+
+    return [...staticStores, ...filteredBackend, ...filteredGoogle];
+  }, [filteredStoreOptions, backendStores, googleStores, storeSearch]);
+
   const selectArea = (area) => {
     setSelectedArea(area);
     setShowAreaDropdown(false);
     setAreaSearch('');
+    setGoogleStores([]);
+    setBackendStores([]);
     // Reset store choices on all existing items when area changes
     setOrderItems(prev => prev.map(item => ({
       ...item,
       storeType: null,
       selectedStore: '',
       customStore: '',
+      customStoreConfirmed: false,
     })));
   };
+
+
+
 
   // ── Order item CRUD ───────────────────────────────────────────────────────
   const addOrderItem = () => {
     if (!currentItem.trim()) return;
-    const newItem = newOrderItem(currentItem.trim(), 'Food');
-    setOrderItems(prev => [...prev, newItem]);
+    const cat = selectedCategory || detectItemCategory(currentItem.trim());
+    const newItem = newOrderItem(currentItem.trim(), cat);
+    setOrderItems(prev => [newItem, ...prev]);
     setCurrentItem('');
   };
+
 
   const removeOrderItem = (id) => {
     showThemedAlert({
@@ -454,9 +629,15 @@ const DashboardScreen = ({ navigation, route }) => {
     setOrderItems(prev => prev.map(i => i.id === id ? { ...i, editing: true, editText: i.text } : i));
 
   const saveEditItem = (id) =>
-    setOrderItems(prev => prev.map(i => i.id === id
-      ? { ...i, editing: false, text: i.editText.trim() || i.text }
-      : i));
+    setOrderItems(prev => prev.map(i => {
+      if (i.id === id) {
+        const newText = i.editText.trim() || i.text;
+        const newCat = detectItemCategory(newText);
+        return { ...i, editing: false, text: newText, category: newCat };
+      }
+      return i;
+    }));
+
 
   const cancelEditItem = (id) =>
     setOrderItems(prev => prev.map(i => i.id === id ? { ...i, editing: false, editText: i.text } : i));
@@ -483,7 +664,7 @@ const DashboardScreen = ({ navigation, route }) => {
     if (!item.storeType) return null;
     if (item.storeType === STORE_TYPES.ROBOT) return '🤖 Robot Store';
     if (item.storeType === STORE_TYPES.CUSTOM) return item.customStore || 'Custom Store';
-    if (item.storeType === STORE_TYPES.FEED)   return item.selectedStore || 'Feed Store';
+    if (item.storeType === STORE_TYPES.FEED) return item.selectedStore || 'Feed Store';
     return null;
   };
 
@@ -548,9 +729,9 @@ const DashboardScreen = ({ navigation, route }) => {
       items: itemsToValidate.map(item => ({
         id: item.id,
         text: item.text,
-        store: item.storeType === STORE_TYPES.ROBOT  ? 'Robot Store'
-             : item.storeType === STORE_TYPES.CUSTOM ? item.customStore
-             : item.selectedStore,
+        store: item.storeType === STORE_TYPES.ROBOT ? 'Robot Store'
+          : item.storeType === STORE_TYPES.CUSTOM ? item.customStore
+            : item.selectedStore,
         isRobotStore: item.storeType === STORE_TYPES.ROBOT,
       })),
       area: selectedArea,
@@ -630,12 +811,16 @@ const DashboardScreen = ({ navigation, route }) => {
         <Animated.View style={[styles.heroSection, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
           <ScrollView
             ref={heroScrollRef}
-            horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            horizontal
+            pagingEnabled={false}
+            showsHorizontalScrollIndicator={false}
             onScroll={handleHeroScroll}
             onMomentumScrollEnd={handleHeroScrollEnd}
             scrollEventThrottle={16}
             decelerationRate="fast"
-            snapToInterval={SCREEN_WIDTH} snapToAlignment="start"
+            snapToInterval={HERO_SNAP_INTERVAL}
+            snapToAlignment="start"
+            contentContainerStyle={styles.heroScrollContent}
           >
             {HERO_LOOP_CARDS.map((card, index) => (
               <View key={`hero-${card.id}-${index}`} style={styles.heroCardWrapper}>
@@ -646,9 +831,16 @@ const DashboardScreen = ({ navigation, route }) => {
                   <View style={styles.heroTopSection}>
                     <View style={styles.heroImageOuter}>
                       <View style={styles.heroImageInner}>
-                        <Text style={styles.heroImageEmoji}>{card.image}</Text>
+                        {card.image3D ? (
+                          <Image source={card.image3D} style={styles.heroBrandImage} resizeMode="cover" />
+                        ) : (
+                          <Text style={styles.heroImageEmoji}>{card.image}</Text>
+                        )}
+
                       </View>
                     </View>
+
+
                     <View style={styles.heroTextContainer}>
                       <Text style={styles.heroTitle}>{card.title}</Text>
                       <Text style={styles.heroSubtitle}>{card.subtitle}</Text>
@@ -697,27 +889,51 @@ const DashboardScreen = ({ navigation, route }) => {
 
         {/* ─── CATEGORIES ─── */}
         <View style={styles.categoriesSection}>
-          <Text style={styles.categoriesTitle}>Categories</Text>
+          <View style={styles.categoriesHeaderRow}>
+            <Text style={styles.categoriesTitle}>Categories</Text>
+            {selectedCategory && (
+              <TouchableOpacity onPress={() => setSelectedCategory(null)} activeOpacity={0.7}>
+                <Text style={styles.clearCategoryText}>Clear Selection</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.categoriesScrollContent}
           >
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category.id}
-                style={styles.categoryCard}
-                onPress={() => handleCategoryPress(category.name)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.categoryIconContainer}>
-                  <Text style={styles.categoryIconText}>{category.icon}</Text>
-                </View>
-                <Text style={styles.categoryNameText} numberOfLines={1}>{category.name}</Text>
-              </TouchableOpacity>
-            ))}
+            {categories.map((category) => {
+              const isSelected = selectedCategory === category.name;
+              const assetSource = get3DCategoryAsset(category.name);
+
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[styles.categoryCard, isSelected && styles.categoryCardSelected]}
+                  onPress={() => setSelectedCategory(isSelected ? null : category.name)}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.categoryIconContainer, isSelected && styles.categoryIconContainerSelected]}>
+                    <Image
+                      source={assetSource}
+                      style={styles.category3DImage}
+                      resizeMode="contain"
+                    />
+
+                  </View>
+                  <Text style={[styles.categoryNameText, isSelected && styles.categoryNameTextSelected]} numberOfLines={1}>
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+
           </ScrollView>
         </View>
+
+
+
 
         {/* ─── CURRENT ORDERS ─── */}
         {currentOrders.length > 0 && (
@@ -908,8 +1124,19 @@ const DashboardScreen = ({ navigation, route }) => {
                             returnKeyType="done"
                           />
                         ) : (
-                          <Text style={styles.orderItemText}>{item.text}</Text>
+                          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                            <Text style={styles.orderItemText}>{item.text}</Text>
+                            <View style={styles.itemCategoryBadge}>
+                              <Text style={styles.itemCategoryBadgeText}>
+                                {item.category === 'Pharmacy' ? '💊 Pharmacy' : item.category === 'Groceries' ? '🛒 Groceries' : item.category === 'Fresh Bazaar' ? '🥬 Fresh Bazaar' : item.category === 'Meat' ? '🥩 Meat' : item.category === 'Cosmetics' ? '💄 Cosmetics' : item.category === 'Fitness' ? '🏋️‍♂️ Fitness' : item.category === 'House Decor' ? '🛋️ House Decor' : '🍔 Food'}
+                              </Text>
+
+
+
+                            </View>
+                          </View>
                         )}
+
 
                         <View style={styles.orderItemActions}>
                           {item.editing ? (
@@ -1035,32 +1262,32 @@ const DashboardScreen = ({ navigation, route }) => {
                           {/* Chosen store label */}
                           {((getItemStoreLabel(item) && item.storeType !== STORE_TYPES.CUSTOM) ||
                             (item.storeType === STORE_TYPES.CUSTOM && item.customStoreConfirmed)) && (
-                            <View style={styles.chosenStoreRow}>
-                              <View style={styles.chosenStorePill}>
-                                <Ionicons
-                                  name="checkmark-circle"
-                                  size={14}
-                                  color={item.storeType === STORE_TYPES.CUSTOM ? '#FF8C42' : '#2EC4B6'}
-                                />
-                                <Text
-                                  style={[
-                                    styles.chosenStorePillText,
-                                    item.storeType === STORE_TYPES.CUSTOM && { color: '#FF8C42' }
-                                  ]}
-                                >
-                                  {item.storeType === STORE_TYPES.CUSTOM ? `Own: ${item.customStore}` : getItemStoreLabel(item)}
-                                </Text>
+                              <View style={styles.chosenStoreRow}>
+                                <View style={styles.chosenStorePill}>
+                                  <Ionicons
+                                    name="checkmark-circle"
+                                    size={14}
+                                    color={item.storeType === STORE_TYPES.CUSTOM ? '#FF8C42' : '#2EC4B6'}
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.chosenStorePillText,
+                                      item.storeType === STORE_TYPES.CUSTOM && { color: '#FF8C42' }
+                                    ]}
+                                  >
+                                    {item.storeType === STORE_TYPES.CUSTOM ? `Own: ${item.customStore}` : getItemStoreLabel(item)}
+                                  </Text>
+                                </View>
+                                {item.storeType === STORE_TYPES.CUSTOM && (
+                                  <TouchableOpacity
+                                    style={styles.customStoreEditBtn}
+                                    onPress={() => setItemCustomStoreConfirmed(item.id, false)}
+                                  >
+                                    <Ionicons name="pencil-outline" size={14} color="#FF8C42" />
+                                  </TouchableOpacity>
+                                )}
                               </View>
-                              {item.storeType === STORE_TYPES.CUSTOM && (
-                                <TouchableOpacity
-                                  style={styles.customStoreEditBtn}
-                                  onPress={() => setItemCustomStoreConfirmed(item.id, false)}
-                                >
-                                  <Ionicons name="pencil-outline" size={14} color="#FF8C42" />
-                                </TouchableOpacity>
-                              )}
-                            </View>
-                          )}
+                            )}
                         </View>
                       )}
                     </View>
@@ -1191,7 +1418,7 @@ const DashboardScreen = ({ navigation, route }) => {
                         <Text style={styles.orderArea}>
                           <Ionicons name="location-outline" size={14} color="#666" />{' '}{order.area}
                         </Text>
-                       
+
                       </View>
                     </TouchableOpacity>
                   ))}
@@ -1250,7 +1477,12 @@ const DashboardScreen = ({ navigation, route }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Choose Store in {selectedArea}</Text>
+              <View>
+                <Text style={styles.modalTitle}>Choose Store in {selectedArea}</Text>
+                <Text style={styles.modalCategorySub}>
+                  Category: {currentPickerCategory}
+                </Text>
+              </View>
               <TouchableOpacity onPress={closeStorePicker}>
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
@@ -1259,7 +1491,7 @@ const DashboardScreen = ({ navigation, route }) => {
               <Ionicons name="search-outline" size={20} color="#999" />
               <TextInput
                 style={styles.modalSearchInput}
-                placeholder="Search stores..."
+                placeholder={`Search ${currentPickerCategory} stores...`}
                 value={storeSearch}
                 onChangeText={setStoreSearch}
                 placeholderTextColor="#999"
@@ -1267,34 +1499,61 @@ const DashboardScreen = ({ navigation, route }) => {
                 autoCapitalize="none"
               />
             </View>
+
+            {loadingGoogleStores && (
+              <View style={styles.googleLoadingBanner}>
+                <ActivityIndicator size="small" color="#2EC4B6" style={{ marginRight: 8 }} />
+                <Text style={styles.googleLoadingText}>
+                  Fetching nearby {currentPickerCategory} stores via Google Maps API...
+                </Text>
+              </View>
+            )}
+
             <FlatList
-              data={filteredStoreOptions}
-              keyExtractor={item => item}
+              data={combinedStoreList}
+              keyExtractor={(item, index) => (typeof item === 'string' ? item : item.placeId || index.toString())}
               renderItem={({ item }) => {
-                const logoUrl = getBrandLogo(item);
+                const storeName = typeof item === 'string' ? item : item.name;
+                const isGoogle = typeof item !== 'string' && item.isGoogleStore;
+                const logoUrl = getBrandLogo(storeName);
                 return (
-                  <TouchableOpacity style={styles.modalItem} onPress={() => pickFeedStore(item)}>
+                  <TouchableOpacity style={styles.modalItem} onPress={() => pickFeedStore(storeName)}>
                     {logoUrl ? (
-                      <Image 
-                        source={{ uri: logoUrl }} 
-                        style={{ width: 24, height: 24, marginRight: 10, borderRadius: 12, resizeMode: 'contain' }} 
+                      <Image
+                        source={{ uri: logoUrl }}
+                        style={{ width: 24, height: 24, marginRight: 10, borderRadius: 12, resizeMode: 'contain' }}
                       />
+                    ) : isGoogle ? (
+                      <Ionicons name="location" size={20} color="#EA4335" style={{ marginRight: 10 }} />
                     ) : (
-                      <Ionicons name="storefront-outline" size={18} color="#FF0000" style={{ marginRight: 10 }} />
+                      <Ionicons name="storefront-outline" size={18} color="#2EC4B6" style={{ marginRight: 10 }} />
                     )}
-                    <Text style={styles.modalItemText}>{item}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalItemText}>{storeName}</Text>
+                      {isGoogle && (
+                        <Text style={{ fontSize: 11, color: '#666' }} numberOfLines={1}>
+                          📍 {item.address} {item.rating ? `• ⭐ ${item.rating}` : ''}
+                        </Text>
+                      )}
+                    </View>
+                    {isGoogle && (
+                      <View style={styles.googleBadge}>
+                        <Text style={styles.googleBadgeText}>Google Maps</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               }}
               ListEmptyComponent={
                 <Text style={styles.emptyModalText}>
-                  No stores found for "{storeSearch}" in {selectedArea}
+                  No {currentPickerCategory} stores found for "{storeSearch}" in {selectedArea}
                 </Text>
               }
             />
           </View>
         </View>
       </Modal>
+
 
       {/* Address modal */}
       <Modal visible={showAddressModal} transparent animationType="slide" onRequestClose={() => setShowAddressModal(false)}>
@@ -1372,42 +1631,90 @@ const DashboardScreen = ({ navigation, route }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F7FA' },
-  scrollContent: { paddingHorizontal: 0, paddingBottom: SPACING.lg },
+  scrollContent: { paddingHorizontal: 0, paddingTop: 16, paddingBottom: SPACING.lg },
 
   // ─── HERO ────────────────────────────────────────────────────────────────
-  heroSection: { marginBottom: 10 },
-  heroCardWrapper: { width: SCREEN_WIDTH },
-  heroCard: { paddingTop: 30, paddingBottom: 50, paddingHorizontal: 24, minHeight: 300, overflow: 'hidden', borderBottomLeftRadius: 40, borderBottomRightRadius: 40 },
-  heroBgCircleLarge:  { position: 'absolute', top: -40, right: -40, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.07)' },
-  heroBgCircleMedium: { position: 'absolute', top: 20, right: 30, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)' },
-  heroBgCircleSmall:  { position: 'absolute', bottom: 60, left: -20, width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.05)' },
-  heroTopSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
-  heroImageOuter: { width: 110, height: 110, borderRadius: 55, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', marginRight: 20, borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)' },
-  heroImageInner: { width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
-  heroImageEmoji: { fontSize: 54 },
+  heroSection: { marginTop: 8, marginBottom: 6 },
+  heroScrollContent: { paddingHorizontal: 16 },
+
+  heroCardWrapper: { width: HERO_CARD_WIDTH, marginRight: HERO_CARD_GAP },
+  heroCard: { paddingTop: 16, paddingBottom: 16, paddingHorizontal: 16, minHeight: 200, overflow: 'hidden', borderRadius: 24 },
+  heroBgCircleLarge: { position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.07)' },
+  heroBgCircleMedium: { position: 'absolute', top: 10, right: 20, width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.06)' },
+  heroBgCircleSmall: { position: 'absolute', bottom: 30, left: -20, width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.05)' },
+  heroTopSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  heroImageOuter: { width: 64, height: 64, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', marginRight: 12, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
+  heroImageInner: { width: 56, height: 56, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  heroBrandImage: { width: 50, height: 50, borderRadius: 10 },
+  heroImageEmoji: { fontSize: 30 },
+
   heroTextContainer: { flex: 1 },
-  heroTitle: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  heroSubtitle: { fontSize: 15, color: 'rgba(255,255,255,0.82)', marginTop: 4 },
-  heroStatsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 16, paddingVertical: 14, paddingHorizontal: 8 },
-  heroStatItem: { flex: 1, alignItems: 'center', gap: 3 },
-  heroStatDivider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.25)' },
-  heroStatValue: { fontSize: 13, color: '#fff', fontWeight: '700', marginTop: 2 },
-  heroStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
-  heroOrderButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', borderRadius: 50, paddingVertical: 14, paddingLeft: 30, paddingRight: 10, marginHorizontal: 80, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 10, elevation: 6 },
-  heroOrderButtonText: { fontSize: 17, fontWeight: '700', color: '#1FA99D' },
-  heroOrderButtonArrow: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#2EC4B6', alignItems: 'center', justifyContent: 'center' },
-  paginationContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 14, gap: 6 },
-  paginationDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C5EAE8' },
-  paginationDotActive: { backgroundColor: '#2EC4B6', width: 20, borderRadius: 4 },
+  heroTitle: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  heroSubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  heroStatsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 8 },
+  heroStatItem: { flex: 1, alignItems: 'center', gap: 2 },
+  heroStatDivider: { width: 1, height: 26, backgroundColor: 'rgba(255,255,255,0.25)' },
+  heroStatValue: { fontSize: 12, color: '#fff', fontWeight: '700', marginTop: 1 },
+  heroStatLabel: { fontSize: 9, color: 'rgba(255,255,255,0.75)', fontWeight: '500' },
+  heroOrderButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', borderRadius: 50, paddingVertical: 8, paddingLeft: 18, paddingRight: 6, alignSelf: 'center', width: '58%', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 4 },
+  heroOrderButtonText: { fontSize: 14, fontWeight: '700', color: '#1FA99D' },
+  heroOrderButtonArrow: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#2EC4B6', alignItems: 'center', justifyContent: 'center' },
+
+  paginationContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 8, gap: 5 },
+  paginationDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#C5EAE8' },
+  paginationDotActive: { backgroundColor: '#2EC4B6', width: 16, borderRadius: 3 },
 
   // ─── CATEGORIES ──────────────────────────────────────────────────────────
-  categoriesSection: { marginTop: 20, paddingHorizontal: 16 },
-  categoriesTitle: { fontSize: 20, fontWeight: '700', color: '#333', marginBottom: 12 },
-  categoriesScrollContent: { paddingRight: 16, gap: 14 },
-  categoryCard: { alignItems: 'center', width: 80 },
-  categoryIconContainer: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 3, borderWidth: 1, borderColor: '#f0f0f0' },
-  categoryIconText: { fontSize: 32 },
-  categoryNameText: { fontSize: 13, fontWeight: '600', color: '#4A5568', marginTop: 8, textAlign: 'center' },
+  categoriesSection: { marginTop: 12, paddingHorizontal: 16 },
+  categoriesHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  categoriesTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
+  clearCategoryText: { fontSize: 12, color: '#EF4444', fontWeight: '600' },
+  categoriesScrollContent: { paddingRight: 16, paddingTop: 10, paddingBottom: 10, gap: 14 },
+  categoryCard: { alignItems: 'center', width: 76 },
+  categoryCardSelected: { transform: [{ scale: 1.06 }] },
+  categoryIconContainer: {
+    width: 62,
+    height: 62,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#2EC4B6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1.5,
+    borderColor: '#E6F9F7',
+    overflow: 'hidden',
+    padding: 3,
+  },
+  categoryIconContainerSelected: {
+    borderColor: '#2EC4B6',
+    borderWidth: 2.5,
+    shadowColor: '#2EC4B6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
+    backgroundColor: '#E6F9F7',
+  },
+  category3DImage: { width: 54, height: 54, borderRadius: 16 },
+
+  categoryNameText: { fontSize: 12, fontWeight: '600', color: '#4A5568', marginTop: 6, textAlign: 'center' },
+  categoryNameTextSelected: { color: '#2EC4B6', fontWeight: '800' },
+
+
+
+  modalCategorySub: { fontSize: 12, color: '#2EC4B6', fontWeight: '600', marginTop: 2 },
+  googleLoadingBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#E6F9F7', borderRadius: 8, marginBottom: 8 },
+  googleLoadingText: { fontSize: 12, color: '#00796B', fontWeight: '500' },
+  googleBadge: { backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, marginLeft: 6 },
+  googleBadgeText: { fontSize: 10, color: '#DC2626', fontWeight: '700' },
+  itemCategoryBadge: { backgroundColor: '#E6F9F7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: '#2EC4B6' },
+  itemCategoryBadgeText: { fontSize: 11, color: '#00796B', fontWeight: '700' },
+
+
 
   // ─── SLIDER ───────────────────────────────────────────────────────────────
   sliderSection: { marginTop: SPACING.md, paddingHorizontal: SECTION_SIDE_PADDING },
@@ -1511,7 +1818,7 @@ const styles = StyleSheet.create({
   emptyModalText: { fontSize: 16, color: '#666', textAlign: 'center', paddingVertical: SPACING.xl },
 
   // ─── RECENT ORDERS ────────────────────────────────────────────────────────
-  recentOrdersSection: { marginTop: SPACING.lg, paddingBottom: SPACING.xl + 110 , marginBottom: SPACING.sm},
+  recentOrdersSection: { marginTop: SPACING.lg, paddingBottom: SPACING.xl + 110, marginBottom: SPACING.sm },
   viewAllText: { fontSize: 14, color: '#2EC4B6', fontWeight: '600' },
   itemStoreHint: { marginTop: SPACING.sm, color: '#D97706', fontSize: 12, fontWeight: '600' },
   emptyOrdersContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.xl, backgroundColor: '#fff', borderRadius: 16 },

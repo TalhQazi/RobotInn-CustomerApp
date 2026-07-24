@@ -52,7 +52,8 @@ const LiveTrackingMap = ({
     });
   }, [hasCoords, riderCoords, destinationCoords]);
 
-  const useStaticPreview = !!mapUrl && !staticMapFailed;
+  const useStaticPreview = false;
+
 
   const emptyMessage = useMemo(() => {
     if (isTracking && !riderCoords) {
