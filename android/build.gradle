@@ -63,9 +63,24 @@ subprojects {
 }
 
 allprojects {
+    // Redirect JCenter (permanently shut down) to Maven Central for all subprojects
+    repositories {
+        google()
+        mavenCentral()
+        maven { url "https://maven.google.com" }
+        maven {
+            // JCenter mirror — resolves legacy artifacts (e.g. react-native-community/geolocation build tools)
+            url "https://jcenter.bintray.com"
+            content {
+                // Only fetch from JCenter what cannot be found on Maven Central
+            }
+        }
+    }
     configurations.all {
         resolutionStrategy {
             force "com.google.android.gms:play-services-location:20.0.0"
+            // Force modern Android build tools to avoid old JCenter-only plugin versions
+            force "com.android.tools.build:gradle:8.3.2"
         }
     }
 }

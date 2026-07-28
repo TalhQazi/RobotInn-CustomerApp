@@ -19,6 +19,7 @@ import { fetchNearbyStoresFromGoogle } from '../../utils/maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
+import PaymentAdjustmentModal from '../../components/order/PaymentAdjustmentModal';
 
 
 // ─── Default Islamabad sector list ─────────────────────────────────────────────
@@ -321,7 +322,56 @@ const DashboardScreen = ({ navigation, route }) => {
   // ── Orders ────────────────────────────────────────────────────────────────
   const [recentOrders, setRecentOrders] = useState([]);
   const [currentOrders, setCurrentOrders] = useState([]);
+
+  // ── Price Adjustment Modal (ADJUSTMENT_PENDING) ───────────────────────────
+  const [adjustmentModalOrder, setAdjustmentModalOrder] = useState(null);
+  const [adjustmentModalVisible, setAdjustmentModalVisible] = useState(false);
+  const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
+  const shownAdjustmentOrderIds = useRef(new Set());
+
+  const handleApproveAdjustment = async (order) => {
+    try {
+      setAdjustmentSubmitting(true);
+      const orderId = order.id || order.orderId || order._id;
+      await ordersAPI.respondPriceAdjustment(orderId, { decision: 'ACCEPT' });
+      setAdjustmentModalVisible(false);
+      setAdjustmentModalOrder(null);
+      showThemedAlert({
+        title: '✅ Payment Approved',
+        message: 'You have approved the price adjustment. The rider is on their way!',
+        buttons: [{ text: 'OK' }],
+      });
+      fetchDashboardData();
+    } catch (err) {
+      showThemedAlert({ title: 'Error', message: err.message || 'Failed to approve adjustment.' });
+    } finally {
+      setAdjustmentSubmitting(false);
+    }
+  };
+
+  const handleDisputeAdjustment = (order) => {
+    setAdjustmentModalVisible(false);
+    setAdjustmentModalOrder(null);
+    showThemedAlert({
+      title: '⚠️ Amount Disputed',
+      message: 'Your dispute has been submitted. An admin will review the receipt and contact you shortly.',
+      buttons: [{ text: 'OK' }],
+    });
+  };
   const [cancellingOrderId, setCancellingOrderId] = useState(null);
+
+  // Auto-show adjustment modal whenever a current order hits ADJUSTMENT_PENDING
+  useEffect(() => {
+    const adjustmentOrder = currentOrders.find(o => o.status === 'ADJUSTMENT_PENDING');
+    if (adjustmentOrder) {
+      const oid = adjustmentOrder.id || adjustmentOrder.orderId || adjustmentOrder._id;
+      if (oid && !shownAdjustmentOrderIds.current.has(oid)) {
+        shownAdjustmentOrderIds.current.add(oid);
+        setAdjustmentModalOrder(adjustmentOrder);
+        setAdjustmentModalVisible(true);
+      }
+    }
+  }, [currentOrders]);
 
   const isPendingOrder = (status) => {
     if (!status) return true;
@@ -805,7 +855,18 @@ const DashboardScreen = ({ navigation, route }) => {
         onRequestClose={() => setThemedAlert({ visible: false, title: '', message: '', buttons: [] })}
       />
 
+      {/* ── Price Adjustment Bottom-Sheet Modal ── */}
+      <PaymentAdjustmentModal
+        visible={adjustmentModalVisible}
+        order={adjustmentModalOrder}
+        isSubmitting={adjustmentSubmitting}
+        onApprove={handleApproveAdjustment}
+        onDispute={handleDisputeAdjustment}
+        onDismiss={() => setAdjustmentModalVisible(false)}
+      />
+
       <ScrollView ref={scrollViewRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+
 
         {/* ─── HERO ─── */}
         <Animated.View style={[styles.heroSection, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
@@ -964,9 +1025,21 @@ const DashboardScreen = ({ navigation, route }) => {
                     <View style={styles.currentOrderHeader}>
                       <View style={styles.currentOrderIdContainer}>
                         <Text style={styles.currentOrderId}>#{order.orderId?.slice(-6) || order.id?.slice(-6) || 'N/A'}</Text>
-                        <View style={[styles.statusBadge, { backgroundColor: order.status === 'processing' ? '#FF8C42' : '#2EC4B6' }]}>
-                          <Text style={styles.statusText}>{order.status?.charAt(0).toUpperCase() + order.status?.slice(1) || 'Pending'}</Text>
+                        <View style={[styles.statusBadge, {
+                          backgroundColor:
+                            order.status === 'ADJUSTMENT_PENDING' ? '#E63946' :
+                            order.status === 'ADMIN_RECEIPT_VALIDATED' ? '#4EA8DE' :
+                            order.status === 'ARRIVED_AT_STORE' ? '#F77F00' :
+                            order.status === 'processing' ? '#FF8C42' : '#2EC4B6'
+                        }]}>
+                          <Text style={styles.statusText}>
+                            {order.status === 'ADJUSTMENT_PENDING' ? 'Price Negotiation' :
+                             order.status === 'ADMIN_RECEIPT_VALIDATED' ? 'Bill Validated' :
+                             order.status === 'ARRIVED_AT_STORE' ? 'Rider at Store' :
+                             order.status?.charAt(0).toUpperCase() + order.status?.slice(1) || 'Pending'}
+                          </Text>
                         </View>
+
                       </View>
                       <Text style={styles.currentOrderDate}>
                         {new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}

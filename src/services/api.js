@@ -500,7 +500,68 @@ export const ordersAPI = {
     });
     return { success: true };
   },
+
+  // ── Phase 2: Store Pickup Receipt Upload ──────────────────────────────────
+  uploadStoreReceipt: async (orderId, { receiptUrl, actualStoreBill }) => {
+    await firestore().collection('orders').doc(orderId).update({
+      'receipt.imageUrl': receiptUrl,
+      'receipt.actualStoreBill': parseFloat(actualStoreBill) || 0,
+      'receipt.uploadedAt': new Date().toISOString(),
+      'receipt.status': 'PENDING_ADMIN_VALIDATION',
+      status: 'ARRIVED_AT_STORE',
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  },
+
+  // ── Phase 3: Admin Receipt Validation ──────────────────────────────────────
+  validateReceipt: async (orderId, { status, adminNotes }) => {
+    const isApproved = status === 'APPROVED';
+    await firestore().collection('orders').doc(orderId).update({
+      'receipt.status': status,
+      'receipt.validatedAt': new Date().toISOString(),
+      'receipt.adminNotes': adminNotes || '',
+      status: isApproved ? 'ADMIN_RECEIPT_VALIDATED' : 'ARRIVED_AT_STORE',
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  },
+
+  // ── Phase 4: Dynamic Price Negotiation Engine ──────────────────────────────
+  proposePriceAdjustment: async (orderId, { proposedTotal, reason }) => {
+    await firestore().collection('orders').doc(orderId).update({
+      status: 'ADJUSTMENT_PENDING',
+      'adjustmentNegotiation.proposedAmount': parseFloat(proposedTotal),
+      'adjustmentNegotiation.reason': reason,
+      'adjustmentNegotiation.requestedByRider': true,
+      'adjustmentNegotiation.customerApproved': false,
+      'adjustmentNegotiation.updatedAt': new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  },
+
+  respondPriceAdjustment: async (orderId, { decision, paymentMethodId }) => {
+    const isAccepted = decision === 'ACCEPT';
+    const nextStatus = isAccepted ? 'OUT_FOR_DELIVERY' : 'ADJUSTMENT_REJECTED';
+    
+    const updateData = {
+      status: nextStatus,
+      'adjustmentNegotiation.customerApproved': isAccepted,
+      'adjustmentNegotiation.decisionTimestamp': new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (isAccepted) {
+      updateData['financials.paymentStatus'] = 'ADJUSTMENT_APPROVED';
+      updateData['financials.paymentMethodId'] = paymentMethodId || 'COD';
+    }
+
+    await firestore().collection('orders').doc(orderId).update(updateData);
+    return { success: true, status: nextStatus };
+  },
 };
+
 
 // Notifications APIs
 export const notificationsAPI = {
