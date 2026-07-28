@@ -4,6 +4,7 @@ import storage from '@react-native-firebase/storage';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { getData, storeData, removeData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
+import { ORDER_STATUS, isBillVisibleToCustomer } from '../utils/orderStatus';
 
 const checkExists = (snap) => {
   if (!snap) return false;
@@ -79,10 +80,9 @@ export const authAPI = {
       }
       await firestore().collection('users').doc(firebaseUser.uid).update({
         types: currentTypes,
-        password,
         addresses: existingProfile.addresses || [],
       });
-      const profile = { ...existingProfile, types: currentTypes, type: 'customer', password };
+      const profile = { ...existingProfile, types: currentTypes, type: 'customer' };
       await Promise.all([
         storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
         storeData(ASYNC_STORAGE_KEYS.USER_DATA, profile)
@@ -99,8 +99,9 @@ export const authAPI = {
       type: 'customer',
       types: ['customer'],
       addresses: [],
-      password, // Save password in Firestore for verification-code resets
-      createdAt: new Date().toISOString() 
+      // The password is NEVER stored here. Firebase Auth is the only credential
+      // store; it hashes with scrypt server-side and no client can read it back.
+      createdAt: new Date().toISOString()
     };
     
     await firestore().collection('users').doc(firebaseUser.uid).set(profile);
@@ -120,11 +121,7 @@ export const authAPI = {
     
     // Fetch profile details
     const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
-    
-    if (checkExists(userSnap)) {
-      await firestore().collection('users').doc(firebaseUser.uid).update({ password });
-    }
-    
+
     if (!checkExists(userSnap)) {
       // Create a default profile if not exists
       const defaultProfile = {
@@ -254,26 +251,22 @@ export const authAPI = {
 
   sendOTPCode: async (email) => {
     try {
-      // 1. Verify user exists
-      const userSnap = await firestore().collection('users').where('email', '==', email).get();
-      if (userSnap.empty) {
-        throw new Error('No user found with this email address.');
-      }
+      // No `users` lookup here: querying the collection by email before sign-in
+      // would require it to be world-readable, and the response would tell an
+      // attacker which addresses have accounts. An unknown address still gets a
+      // "code sent" response — the code simply never arrives.
 
-      // 2. Generate 6-digit OTP
+      // 1. Generate 6-digit OTP
       const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-      // 3. Save OTP to Firestore
+      // 2. Save OTP to Firestore
       await firestore().collection('otps').doc(email).set({
         email,
         code,
         createdAt: new Date().toISOString()
       });
 
-      // Always log the generated OTP to console for development/debug access
-      console.log(`🔑 [DEBUG] OTP Code for ${email}: ${code}`);
-
-      // 4. Send email via FormSubmit in the background (no await)
+      // 3. Send email via FormSubmit in the background (no await)
       fetch('https://formsubmit.co/ajax/' + email, {
         method: 'POST',
         headers: {
@@ -294,10 +287,12 @@ export const authAPI = {
         console.warn('FormSubmit email send warning:', emailErr);
       });
 
-      return { success: true, code: code };
+      // The code is deliberately NOT returned to the caller — it only ever
+      // travels by email.
+      return { success: true };
     } catch (err) {
       if (err.message && err.message.toLowerCase().includes('permission-denied')) {
-        throw new Error('Firestore Rules Denied: Unauthenticated password reset is blocked by your Firebase rules. Please allow public read/write to the "otps" and "users" collections in your Firebase console.');
+        throw new Error('Could not start password reset. Please try again shortly.');
       }
       throw err;
     }
@@ -322,55 +317,28 @@ export const authAPI = {
         throw new Error('Verification code has expired. Please request a new one.');
       }
 
-      // 2. Fetch user's profile to get the old password
-      const userSnap = await firestore().collection('users').where('email', '==', email).get();
-      if (userSnap.empty) {
-        throw new Error('User not found.');
-      }
+      // 2. Code is good. Hand off to Firebase Auth to actually change the
+      // credential.
+      //
+      // This used to read the user's old password out of Firestore and sign in
+      // as them to call updatePassword(). That required storing every password
+      // in plaintext in a readable collection, so it is gone. A client SDK
+      // cannot set a password it doesn't already know, so the secure link is
+      // the only correct option until `resetPasswordWithOtp` moves to a Cloud
+      // Function with the Admin SDK.
+      await auth().sendPasswordResetEmail(email);
 
-      const userDoc = userSnap.docs[0];
-      const userData = userDoc.data();
-      const oldPassword = userData.password;
-
-      // 3. Temporarily sign in user with their old password to update password in Firebase Auth
-      let authUpdateSuccess = false;
-      if (oldPassword) {
-        try {
-          const userCredential = await auth().signInWithEmailAndPassword(email, oldPassword);
-          await userCredential.user.updatePassword(newPassword);
-          authUpdateSuccess = true;
-          // Sign out immediately after updating
-          await auth().signOut();
-        } catch (authErr) {
-          console.warn('Temporary sign in / password update error in Firebase Auth:', authErr);
-        }
-      }
-
-      if (!authUpdateSuccess) {
-        // Fallback: If we couldn't automatically sync the password with Firebase Auth,
-        // send the official Firebase reset email and instruct the user.
-        await auth().sendPasswordResetEmail(email);
-        
-        // Still clean up the OTP
-        await firestore().collection('otps').doc(email).delete();
-
-        throw new Error('For security reasons, your account requires a direct reset link. We have sent a secure password reset link to your email. Please click the link to set your password, then return here to login.');
-      }
-
-      // 4. Update the password field and temporary password in Firestore
-      await userDoc.ref.update({
-        password: newPassword,
-        tempPassword: newPassword,
-        updatedAt: new Date().toISOString()
-      });
-
-      // 5. Clean up OTP doc
+      // 3. Burn the code either way — it has served its purpose.
       await firestore().collection('otps').doc(email).delete();
 
-      return { success: true };
+      return {
+        success: true,
+        requiresEmailLink: true,
+        message: 'Code verified. We have emailed you a secure link to set your new password.'
+      };
     } catch (err) {
       if (err.message && err.message.toLowerCase().includes('permission-denied')) {
-        throw new Error('Firestore Rules Denied: Updating password in Firestore is blocked by your security rules. Please check your Firestore security settings.');
+        throw new Error('Could not reset password. Please try again shortly.');
       }
       throw err;
     }
@@ -501,50 +469,16 @@ export const ordersAPI = {
     return { success: true };
   },
 
-  // ── Phase 2: Store Pickup Receipt Upload ──────────────────────────────────
-  uploadStoreReceipt: async (orderId, { receiptUrl, actualStoreBill }) => {
-    await firestore().collection('orders').doc(orderId).update({
-      'receipt.imageUrl': receiptUrl,
-      'receipt.actualStoreBill': parseFloat(actualStoreBill) || 0,
-      'receipt.uploadedAt': new Date().toISOString(),
-      'receipt.status': 'PENDING_ADMIN_VALIDATION',
-      status: 'ARRIVED_AT_STORE',
-      updatedAt: new Date().toISOString(),
-    });
-    return { success: true };
-  },
-
-  // ── Phase 3: Admin Receipt Validation ──────────────────────────────────────
-  validateReceipt: async (orderId, { status, adminNotes }) => {
-    const isApproved = status === 'APPROVED';
-    await firestore().collection('orders').doc(orderId).update({
-      'receipt.status': status,
-      'receipt.validatedAt': new Date().toISOString(),
-      'receipt.adminNotes': adminNotes || '',
-      status: isApproved ? 'ADMIN_RECEIPT_VALIDATED' : 'ARRIVED_AT_STORE',
-      updatedAt: new Date().toISOString(),
-    });
-    return { success: true };
-  },
-
-  // ── Phase 4: Dynamic Price Negotiation Engine ──────────────────────────────
-  proposePriceAdjustment: async (orderId, { proposedTotal, reason }) => {
-    await firestore().collection('orders').doc(orderId).update({
-      status: 'ADJUSTMENT_PENDING',
-      'adjustmentNegotiation.proposedAmount': parseFloat(proposedTotal),
-      'adjustmentNegotiation.reason': reason,
-      'adjustmentNegotiation.requestedByRider': true,
-      'adjustmentNegotiation.customerApproved': false,
-      'adjustmentNegotiation.updatedAt': new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-    return { success: true };
-  },
-
+  // ── Price adjustment ───────────────────────────────────────────────────────
+  // Receipt upload lives in the Rider app and receipt validation in the Admin
+  // panel; the customer only ever answers an adjustment the admin has already
+  // approved, so those two writers were removed from this client.
   respondPriceAdjustment: async (orderId, { decision, paymentMethodId }) => {
     const isAccepted = decision === 'ACCEPT';
-    const nextStatus = isAccepted ? 'OUT_FOR_DELIVERY' : 'ADJUSTMENT_REJECTED';
-    
+    const nextStatus = isAccepted
+      ? ORDER_STATUS.BILL_APPROVED
+      : ORDER_STATUS.ADJUSTMENT_REJECTED;
+
     const updateData = {
       status: nextStatus,
       'adjustmentNegotiation.customerApproved': isAccepted,
@@ -756,13 +690,39 @@ export const areasAPI = {
 // Categories API
 export const categoriesAPI = {
   getAll: async () => {
-    const snap = await firestore().collection('categories').get();
+    const snap = await firestore()
+      .collection('categories')
+      .orderBy('createdAt', 'asc')
+      .get();
     const data = [];
     snap.forEach(doc => {
       data.push({ id: doc.id, ...doc.data() });
     });
     return { success: true, data };
   },
+
+  /**
+   * Live categories, so an icon or name changed in the Admin panel shows up
+   * without the customer restarting the app. Returns the unsubscribe fn.
+   */
+  subscribe: (onChange, onError) =>
+    firestore()
+      .collection('categories')
+      .orderBy('createdAt', 'asc')
+      .onSnapshot(
+        snap => {
+          const data = [];
+          snap.forEach(doc => {
+            const cat = { id: doc.id, ...doc.data() };
+            if (cat.active !== false) data.push(cat);
+          });
+          onChange(data);
+        },
+        err => {
+          console.log('❌ Categories listener error:', err?.message);
+          if (onError) onError(err);
+        },
+      ),
 };
 
 // Stores API with Location & Category Geo-filtering
@@ -833,7 +793,9 @@ export const billsAPI = {
         order.userId === firebaseUser.uid ||
         order.uid === firebaseUser.uid;
 
-      if (isCustomerOrder && order.bill) {
+      // A bill only becomes the customer's business once the admin has
+      // approved it — an unreviewed rider submission stays hidden.
+      if (isCustomerOrder && order.bill && isBillVisibleToCustomer(order.bill.status)) {
         const amount = resolveBillAmount(order.bill, order);
 
         bills.push({
@@ -855,6 +817,9 @@ export const billsAPI = {
     const orderSnap = await firestore().collection('orders').doc(billId).get();
     if (!checkExists(orderSnap)) throw new Error('Bill not found');
     const order = orderSnap.data();
+    if (!isBillVisibleToCustomer(order?.bill?.status)) {
+      throw new Error('This bill is still being reviewed by our team.');
+    }
     const amount = resolveBillAmount(order?.bill, order);
     return {
       success: true,

@@ -94,26 +94,24 @@ const CreateNewPasswordScreen = ({ route, navigation }) => {
     setLoading(true);
 
     try {
-      await authAPI.verifyOTPAndResetPassword(email, code, password);
-      setAlertConfig({
+      const res = await authAPI.verifyOTPAndResetPassword(email, code, password);
+      // The code is verified here, but the credential itself is changed through
+      // Firebase's secure link — the app never handles the password directly.
+      setAlertConfig(res?.requiresEmailLink ? {
+        title: 'Check Your Email ✉️',
+        message: 'Code verified. We have emailed you a secure link to set your new password. Open it, choose your password, then return here to log in.',
+        type: 'success'
+      } : {
         title: 'Password Created! 🎉',
         message: 'Your new password has been successfully created. You can now log in.',
         type: 'success'
       });
       setAlertVisible(true);
     } catch (err) {
-      let errorMessage = 'Could not update password. Please try again.';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-
-      const isSecurityRedirect = errorMessage.includes('requires a direct reset link');
       setAlertConfig({
-        title: isSecurityRedirect ? 'Check Your Email ✉️' : 'Reset Failed',
-        message: isSecurityRedirect 
-          ? 'We have sent a secure password reset link to your email. Please check your inbox (and spam folder), click the link to set your password, then return here to log in.'
-          : errorMessage,
-        type: isSecurityRedirect ? 'success' : 'error'
+        title: 'Reset Failed',
+        message: err instanceof Error ? err.message : 'Could not update password. Please try again.',
+        type: 'error'
       });
       setAlertVisible(true);
     } finally {

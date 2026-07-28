@@ -18,19 +18,10 @@ import Card from '../../components/common/Card';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { ordersAPI } from '../../services/api';
 import { normalizeRiderLocation } from '../../utils/maps';
+import { getOrderStatusLabel } from '../../utils/orderStatus';
 
 function formatStatus(status) {
-  if (!status) return 'Pending';
-  const s = String(status).toLowerCase();
-  const map = {
-    pending: 'Pending',
-    accepted: 'Accepted',
-    processing: 'In Progress',
-    picked: 'Picked Up',
-    delivered: 'Delivered',
-    cancelled: 'Cancelled',
-  };
-  return map[s] || status.charAt(0).toUpperCase() + status.slice(1);
+  return getOrderStatusLabel(status);
 }
 
 function formatDate(iso) {

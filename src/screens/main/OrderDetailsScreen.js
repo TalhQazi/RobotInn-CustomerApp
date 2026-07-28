@@ -34,37 +34,21 @@ import {
   onRiderLocationUpdated,
   onOrderUpdated,
 } from '../../services/socket';
-
-const TRACKING_STATUSES = ['accepted', 'processing', 'picked'];
+import {
+  ORDER_STATUS,
+  normalizeOrderStatus,
+  getOrderStatusLabel,
+  isActiveOrderStatus,
+} from '../../utils/orderStatus';
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-const STATUS_DISPLAY = {
-  pending: 'Pending',
-  accepted: 'Accepted',
-  processing: 'In Progress',
-  picked: 'Picked Up',
-  delivered: 'Delivered',
-  cancelled: 'Cancelled',
-};
-
-function normalizeOrderStatus(status) {
-  const value = String(status || '').toLowerCase().trim();
-  const aliases = {
-    'in progress': 'processing',
-    'picked up': 'picked',
-  };
-  return aliases[value] || value;
-}
-
 function isTrackableStatus(status) {
-  return TRACKING_STATUSES.includes(normalizeOrderStatus(status));
+  return isActiveOrderStatus(status);
 }
 
 function formatStatus(status) {
-  if (!status) return 'Pending';
-  const key = normalizeOrderStatus(status);
-  return STATUS_DISPLAY[key] || status.charAt(0).toUpperCase() + status.slice(1);
+  return getOrderStatusLabel(status);
 }
 
 function parseDate(dateVal, fallbackOrder = null) {
@@ -632,7 +616,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
       // Update Firestore to assign the rider and change status
       await firestore().collection('orders').doc(orderMongoId).update({
-        status: 'In Progress',
+        status: ORDER_STATUS.OUT_FOR_DELIVERY,
         riderId: 'simulated_rider_1',
         riderName: 'Sher Shah (Simulated)',
         riderPhone: '+92 300 1234567',
@@ -661,7 +645,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
             simIntervalRef.current = null;
           }
           await firestore().collection('orders').doc(orderMongoId).update({
-            status: 'Delivered',
+            status: ORDER_STATUS.DELIVERED,
             updatedAt: new Date().toISOString()
           });
           return;
@@ -774,15 +758,24 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   const itemsText = normalizeItemsText(order);
   const orderItemList = getOrderItemList(order);
 
+  // `order.status` holds the display label (see mapApiOrderToView), so the
+  // canonical value has to come from rawStatus.
   const getStatusColor = () => {
-    switch (order.status) {
-      case 'Pending':
+    switch (normalizeOrderStatus(order.rawStatus || order.status)) {
+      case 'pending':
         return '#FFA235';
-      case 'In Progress':
+      case 'processing':
+      case 'picked':
         return '#2EC4B6';
-      case 'Delivered':
-        return '#4CAF50';
-      case 'Completed':
+      case 'bill_submitted':
+        return '#FF8C42';
+      case 'bill_rejected':
+      case 'adjustment_pending':
+      case 'adjustment_rejected':
+        return '#E63946';
+      case 'bill_approved':
+        return '#4EA8DE';
+      case 'delivered':
         return '#4CAF50';
       default:
         return '#94A3B8';
@@ -790,15 +783,21 @@ const OrderDetailsScreen = ({ navigation, route }) => {
   };
 
   const getStatusIcon = () => {
-    switch (order.status) {
-      case 'Pending':
+    switch (normalizeOrderStatus(order.rawStatus || order.status)) {
+      case 'pending':
         return 'time-outline';
-      case 'In Progress':
+      case 'processing':
+        return 'storefront-outline';
+      case 'bill_submitted':
+      case 'adjustment_pending':
+        return 'hourglass-outline';
+      case 'bill_rejected':
+      case 'adjustment_rejected':
+        return 'alert-circle-outline';
+      case 'picked':
         return 'bicycle-outline';
-      case 'Delivered':
+      case 'delivered':
         return 'checkmark-circle-outline';
-      case 'Completed':
-        return 'checkmark-done-circle-outline';
       default:
         return 'receipt-outline';
     }

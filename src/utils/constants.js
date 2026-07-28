@@ -9,11 +9,15 @@ export const ASYNC_STORAGE_KEYS = {
   ADDRESSES: 'addresses',
 };
 
-export const ORDER_STATUS = {
-  PENDING: 'Pending',
-  IN_PROGRESS: 'In Progress',
-  DELIVERED: 'Delivered',
-};
+// Order lifecycle lives in one place now — see utils/orderStatus.js, which is
+// kept identical in the Rider app and the Admin panel.
+export {
+  ORDER_STATUS,
+  BILL_STATUS,
+  ORDER_STATUS_LABELS,
+  normalizeOrderStatus,
+  getOrderStatusLabel,
+} from './orderStatus';
 
 export const GOOGLE_MAPS_API_KEY = 'AIzaSyC8Dbpbk_IPYGw0gRKuSDLDsTmm8vs1xbc';
 export const GOOGLE_MAPS_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';

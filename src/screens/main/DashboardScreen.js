@@ -15,6 +15,12 @@ import Card from '../../components/common/Card';
 import ThemedAlert from '../../components/common/ThemedAlert';
 import { getData, storeData } from '../../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../../utils/constants';
+import {
+  ORDER_STATUS,
+  normalizeOrderStatus,
+  getOrderStatusLabel,
+  isActiveOrderStatus,
+} from '../../utils/orderStatus';
 import { fetchNearbyStoresFromGoogle } from '../../utils/maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -29,6 +35,33 @@ const DEFAULT_ISLAMABAD_AREAS = [
   'Bahria Phase 7', 'Bahria Phase 8', 'Gulberg Residencia', 'Bani Gala',
 ];
 
+
+const ORDER_STATUS_COLORS = {
+  [ORDER_STATUS.PENDING]: '#2EC4B6',
+  [ORDER_STATUS.ACCEPTED]: '#2EC4B6',
+  [ORDER_STATUS.SHOPPING]: '#F77F00',
+  [ORDER_STATUS.BILL_SUBMITTED]: '#FF8C42',
+  [ORDER_STATUS.BILL_REJECTED]: '#E63946',
+  [ORDER_STATUS.ADJUSTMENT_PENDING]: '#E63946',
+  [ORDER_STATUS.ADJUSTMENT_REJECTED]: '#E63946',
+  [ORDER_STATUS.BILL_APPROVED]: '#4EA8DE',
+  [ORDER_STATUS.OUT_FOR_DELIVERY]: '#4EA8DE',
+  [ORDER_STATUS.DELIVERED]: '#2EC4B6',
+  [ORDER_STATUS.CANCELLED]: '#9AA5B1',
+};
+
+const getOrderStatusColor = (status) =>
+  ORDER_STATUS_COLORS[normalizeOrderStatus(status)] || '#2EC4B6';
+
+/**
+ * Anything not finished yet, so an order stays on the customer's tracker while
+ * the rider shops and the bill is with Admin. The price-approval modal reads
+ * from this same list, so dropping a status here silently hides the prompt.
+ */
+const isOpenOrder = (order) => {
+  const s = normalizeOrderStatus(order?.status);
+  return s === ORDER_STATUS.PENDING || isActiveOrderStatus(s);
+};
 
 const DEFAULT_CATEGORIES = [
   { id: 'cat1', name: 'Groceries' },
@@ -50,6 +83,11 @@ const CATEGORY_3D_ASSETS = {
   'House Decor': require('../../assets/images/3d_categories/house_decor.png'),
 };
 
+/**
+ * Bundled artwork is only a last resort now. A category shows, in order of
+ * preference: the image the admin uploaded, the emoji the admin picked, then a
+ * name-matched bundled asset for the seven original categories.
+ */
 const get3DCategoryAsset = (name) => {
   if (!name) return CATEGORY_3D_ASSETS.Groceries;
   const n = name.toLowerCase();
@@ -61,6 +99,28 @@ const get3DCategoryAsset = (name) => {
   if (n.includes('fitness') || n.includes('gym')) return CATEGORY_3D_ASSETS.Fitness;
   if (n.includes('decor') || n.includes('house')) return CATEGORY_3D_ASSETS['House Decor'];
   return CATEGORY_3D_ASSETS.Groceries;
+};
+
+const renderCategoryIcon = (category) => {
+  if (category?.iconUrl) {
+    return (
+      <Image
+        source={{ uri: category.iconUrl }}
+        style={styles.category3DImage}
+        resizeMode="cover"
+      />
+    );
+  }
+  if (category?.icon) {
+    return <Text style={styles.categoryEmoji}>{category.icon}</Text>;
+  }
+  return (
+    <Image
+      source={get3DCategoryAsset(category?.name)}
+      style={styles.category3DImage}
+      resizeMode="contain"
+    />
+  );
 };
 
 
@@ -362,7 +422,9 @@ const DashboardScreen = ({ navigation, route }) => {
 
   // Auto-show adjustment modal whenever a current order hits ADJUSTMENT_PENDING
   useEffect(() => {
-    const adjustmentOrder = currentOrders.find(o => o.status === 'ADJUSTMENT_PENDING');
+    const adjustmentOrder = currentOrders.find(
+      o => normalizeOrderStatus(o.status) === ORDER_STATUS.ADJUSTMENT_PENDING,
+    );
     if (adjustmentOrder) {
       const oid = adjustmentOrder.id || adjustmentOrder.orderId || adjustmentOrder._id;
       if (oid && !shownAdjustmentOrderIds.current.has(oid)) {
@@ -428,26 +490,22 @@ const DashboardScreen = ({ navigation, route }) => {
     fetchAreas();
   }, []);
 
-  // ── Fetch categories ───────────────────────────────────────────────────────
+  // ── Categories ─────────────────────────────────────────────────────────────
+  // Live subscription so a category added or re-iconed in the Admin panel
+  // appears here immediately.
   useEffect(() => {
-    const fetchCategories = async () => {
-      setCategoriesLoading(true);
-      try {
-        const response = await categoriesAPI.getAll();
-        if (response.success && Array.isArray(response.data) && response.data.length > 0) {
-          const activeCats = response.data.filter(c => c.active !== false);
-          setCategories(activeCats);
-        } else {
-          setCategories(DEFAULT_CATEGORIES);
-        }
-      } catch (err) {
-        console.log('❌ Categories fetch error:', err.message);
-        setCategories(DEFAULT_CATEGORIES);
-      } finally {
+    setCategoriesLoading(true);
+    const unsubscribe = categoriesAPI.subscribe(
+      list => {
+        setCategories(list.length > 0 ? list : DEFAULT_CATEGORIES);
         setCategoriesLoading(false);
-      }
-    };
-    fetchCategories();
+      },
+      () => {
+        setCategories(DEFAULT_CATEGORIES);
+        setCategoriesLoading(false);
+      },
+    );
+    return () => unsubscribe && unsubscribe();
   }, []);
 
   // ── Hero carousel init ────────────────────────────────────────────────────
@@ -523,12 +581,12 @@ const DashboardScreen = ({ navigation, route }) => {
         if (ordersResponse.success && ordersResponse.data) {
           const orders = ordersResponse.data;
           setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
-          setCurrentOrders(orders.filter(o => ['pending', 'accepted', 'processing'].includes(o.status)));
+          setCurrentOrders(orders.filter(isOpenOrder));
         }
       } catch {
         const orders = await getData(ASYNC_STORAGE_KEYS.ORDERS) || [];
         setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
-        setCurrentOrders(orders.filter(o => ['Pending', 'In Progress', 'Accepted', 'Processing'].includes(o.status)));
+        setCurrentOrders(orders.filter(isOpenOrder));
       }
 
       try {
@@ -965,7 +1023,6 @@ const DashboardScreen = ({ navigation, route }) => {
           >
             {categories.map((category) => {
               const isSelected = selectedCategory === category.name;
-              const assetSource = get3DCategoryAsset(category.name);
 
               return (
                 <TouchableOpacity
@@ -975,12 +1032,7 @@ const DashboardScreen = ({ navigation, route }) => {
                   activeOpacity={0.85}
                 >
                   <View style={[styles.categoryIconContainer, isSelected && styles.categoryIconContainerSelected]}>
-                    <Image
-                      source={assetSource}
-                      style={styles.category3DImage}
-                      resizeMode="contain"
-                    />
-
+                    {renderCategoryIcon(category)}
                   </View>
                   <Text style={[styles.categoryNameText, isSelected && styles.categoryNameTextSelected]} numberOfLines={1}>
                     {category.name}
@@ -1026,17 +1078,10 @@ const DashboardScreen = ({ navigation, route }) => {
                       <View style={styles.currentOrderIdContainer}>
                         <Text style={styles.currentOrderId}>#{order.orderId?.slice(-6) || order.id?.slice(-6) || 'N/A'}</Text>
                         <View style={[styles.statusBadge, {
-                          backgroundColor:
-                            order.status === 'ADJUSTMENT_PENDING' ? '#E63946' :
-                            order.status === 'ADMIN_RECEIPT_VALIDATED' ? '#4EA8DE' :
-                            order.status === 'ARRIVED_AT_STORE' ? '#F77F00' :
-                            order.status === 'processing' ? '#FF8C42' : '#2EC4B6'
+                          backgroundColor: getOrderStatusColor(order.status)
                         }]}>
                           <Text style={styles.statusText}>
-                            {order.status === 'ADJUSTMENT_PENDING' ? 'Price Negotiation' :
-                             order.status === 'ADMIN_RECEIPT_VALIDATED' ? 'Bill Validated' :
-                             order.status === 'ARRIVED_AT_STORE' ? 'Rider at Store' :
-                             order.status?.charAt(0).toUpperCase() + order.status?.slice(1) || 'Pending'}
+                            {getOrderStatusLabel(order.status)}
                           </Text>
                         </View>
 
@@ -1466,10 +1511,9 @@ const DashboardScreen = ({ navigation, route }) => {
                         <View style={styles.orderIdContainer}>
                           <Text style={styles.orderId}>#{order.orderId?.slice(-6) || order.id?.slice(-6) || 'N/A'}</Text>
                           <View style={[styles.statusBadge, {
-                            backgroundColor: order.status === 'Delivered' ? '#2EC4B6'
-                              : order.status === 'In Progress' ? '#FF8C42' : '#2EC4B6',
+                            backgroundColor: getOrderStatusColor(order.status),
                           }]}>
-                            <Text style={styles.statusText}>{order.status || 'Pending'}</Text>
+                            <Text style={styles.statusText}>{getOrderStatusLabel(order.status)}</Text>
                           </View>
                         </View>
                         <Text style={styles.orderDate}>
@@ -1773,6 +1817,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E6F9F7',
   },
   category3DImage: { width: 54, height: 54, borderRadius: 16 },
+  categoryEmoji: { fontSize: 34, lineHeight: 42, textAlign: 'center' },
 
   categoryNameText: { fontSize: 12, fontWeight: '600', color: '#4A5568', marginTop: 6, textAlign: 'center' },
   categoryNameTextSelected: { color: '#2EC4B6', fontWeight: '800' },

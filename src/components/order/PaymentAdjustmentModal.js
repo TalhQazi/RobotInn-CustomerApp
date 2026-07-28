@@ -90,10 +90,24 @@ const PaymentAdjustmentModal = ({
   if (!order) return null;
 
   const adjustment = order.adjustmentData || {};
-  const originalAmount = parseFloat(order.estimatedSubtotal || adjustment.originalEstimatedAmount || 0);
-  const proposedAmount = parseFloat(adjustment.proposedNewAmount || order.proposedTotal || 0);
+  // Admin snapshots the quote into `originalEstimate` and writes the approved
+  // figure to `total` when it clears the bill; the rest are older shapes.
+  const originalAmount = parseFloat(
+    order.originalEstimate ??
+    order.estimatedSubtotal ??
+    adjustment.originalEstimatedAmount ??
+    0,
+  );
+  const proposedAmount = parseFloat(
+    order.bill?.total ??
+    order.total ??
+    adjustment.proposedNewAmount ??
+    order.proposedTotal ??
+    0,
+  );
   const difference = (proposedAmount - originalAmount).toFixed(2);
-  const receiptImageUrl = adjustment.receiptImageUrl || order.receiptUrl || null;
+  const receiptImageUrl =
+    order.bill?.receiptImageUrl || adjustment.receiptImageUrl || order.receiptUrl || null;
   const riderName = order.riderName || order.rider?.name || 'Rider';
   const riderReason = adjustment.reason || 'Actual store prices differ from estimate.';
 
