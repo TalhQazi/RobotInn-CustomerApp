@@ -5,6 +5,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { getData, storeData, removeData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 import { ORDER_STATUS, isBillVisibleToCustomer } from '../utils/orderStatus';
+import { uploadReceiptImage } from '../utils/imageUpload';
 
 const checkExists = (snap) => {
   if (!snap) return false;
@@ -1074,17 +1075,32 @@ export const billsAPI = {
 
   uploadPaymentProof: async ({ billId, uri, fileName, type }) => {
     if (!uri) throw new Error('No image selected');
-    
-    let cleanUri = uri;
-    if (cleanUri.startsWith('/') && !cleanUri.startsWith('file://')) {
-      cleanUri = `file://${cleanUri}`;
-    }
-    const name = fileName || `bill-proof-${billId}-${Date.now()}.jpg`;
-    const ref = storage().ref().child(`bills/${name}`);
-    await ref.putFile(cleanUri, { contentType: type || 'image/jpeg' });
-    
-    const downloadURL = await ref.getDownloadURL();
-    return { success: true, url: downloadURL, data: { url: downloadURL } };
+
+    // Delegates to the shared helper: compresses down the budget ladder, uploads
+    // to Cloud Storage, and hands back a short https URL. Only that string is
+    // ever persisted, which keeps the order document far below Firestore's 1 MiB
+    // ceiling and stops <Image> from having to decode an inline Base64 payload.
+    const { url, embedded, bytes } = await uploadReceiptImage(uri, {
+      prefix: 'bills',
+      id: `bill-proof-${billId}`,
+      // The project is on the Spark plan, so Cloud Storage is not provisioned and
+      // putFile will fail. Embedding is therefore the working path: the image is
+      // compressed below the render guard and stored inline. Set this back to
+      // false once a Storage bucket exists — the helper prefers the https upload
+      // whenever it succeeds.
+      embedOnFailure: true,
+    });
+
+    console.log(
+      '[PAYMENT-PROOF] uploaded',
+      bytes,
+      'bytes | embedded =',
+      embedded,
+      '| url =',
+      url.slice(0, 80),
+    );
+
+    return { success: true, url, data: { url } };
   },
 
   submitPaymentProof: async (billId, proofImageUrl) => {

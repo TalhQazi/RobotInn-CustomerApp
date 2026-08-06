@@ -7,6 +7,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import auth from '@react-native-firebase/auth';
 import FirestoreRepository from './FirestoreRepository';
 
 const ASYNC_KEYWORD_CACHE = '@robotinn_category_keywords_v2';
@@ -173,6 +174,7 @@ class KeywordCacheService {
     this.isInitialized = false;
     this.unsubscribeKeywords = null;
     this.unsubscribeCategories = null;
+    this.unsubscribeAuth = null;
   }
 
   /**
@@ -203,13 +205,24 @@ class KeywordCacheService {
    * Start FirestoreListeners for CategoryKeywords and categories collections
    */
   startFirestoreListeners() {
-    this.unsubscribeKeywords = FirestoreRepository.subscribeCategoryKeywords(
-      (firestoreKeywords) => {
-        if (Array.isArray(firestoreKeywords) && firestoreKeywords.length > 0) {
-          this.updateCache(firestoreKeywords);
-        }
+    // CategoryKeywords is readable only to signed-in users, so attach its listener on
+    // sign-in and drop it on sign-out. While signed out the cache still serves
+    // DEFAULT_CATEGORY_KEYWORDS merged with the AsyncStorage snapshot — we just don't
+    // get live updates, and we avoid a guaranteed permission-denied on every launch.
+    this.unsubscribeAuth = auth().onAuthStateChanged((user) => {
+      if (user && !this.unsubscribeKeywords) {
+        this.unsubscribeKeywords = FirestoreRepository.subscribeCategoryKeywords(
+          (firestoreKeywords) => {
+            if (Array.isArray(firestoreKeywords) && firestoreKeywords.length > 0) {
+              this.updateCache(firestoreKeywords);
+            }
+          }
+        );
+      } else if (!user && this.unsubscribeKeywords) {
+        this.unsubscribeKeywords();
+        this.unsubscribeKeywords = null;
       }
-    );
+    });
 
     this.unsubscribeCategories = FirestoreRepository.subscribeCategories(
       (categories) => {
