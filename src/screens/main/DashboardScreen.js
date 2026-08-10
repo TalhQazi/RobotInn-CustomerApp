@@ -109,24 +109,14 @@ const SLIDER_CARD_WIDTH = Math.round(SCREEN_WIDTH * 0.72);
 
 
 // ─── Hero Cards with official brand logo PNG assets ─────────────────────────
-/**
- * Brand marks are resolved from each brand's own domain rather than bundled
- * 3D renders, so what renders is the flat official logo the brand publishes.
- *
- * To ship licensed assets instead, drop them in assets/images/brands/ and swap
- * the string for a require() — every consumer already handles both forms via
- * `typeof logo === 'string' ? { uri: logo } : logo`.
- */
-const brandMark = domain => `https://icon.horse/icon/${domain}`;
-
 const BRAND_LOGOS = {
-  'burger king': brandMark('burgerking.com'),
-  'pizza hut': brandMark('pizzahut.com'),
-  'kfc': brandMark('kfc.com'),
-  'mcdonald': brandMark('mcdonalds.com'),
-  'subway': brandMark('subway.com'),
-  'dunkin': brandMark('dunkindonuts.com'),
-  'baskin': brandMark('baskinrobbins.com'),
+  'burger king': require('../../assets/images/3d_brands/burger_king.png'),
+  'pizza hut': require('../../assets/images/3d_brands/pizza_hut.png'),
+  'kfc': require('../../assets/images/3d_brands/kfc.png'),
+  'mcdonald': require('../../assets/images/3d_brands/mcdonalds.png'),
+  'subway': require('../../assets/images/3d_brands/subway.png'),
+  'dunkin': require('../../assets/images/3d_brands/dunkin.png'),
+  'baskin': require('../../assets/images/3d_brands/baskin_robbins.png'),
 };
 
 const HERO_CARDS = [
@@ -332,13 +322,13 @@ const getBrandLogo = (storeName) => {
   if (name.includes('subway')) return BRAND_LOGOS['subway'];
   if (name.includes('dunkin')) return BRAND_LOGOS['dunkin'];
   if (name.includes('baskin')) return BRAND_LOGOS['baskin'];
-  if (name.includes('domino')) return brandMark('dominos.com');
-  if (name.includes('starbucks')) return brandMark('starbucks.com');
-  if (name.includes('cheezious')) return brandMark('cheezious.com');
-  if (name.includes('hardee')) return brandMark('hardees.com');
-  if (name.includes('popeyes')) return brandMark('popeyes.com');
-  if (name.includes('tim hortons')) return brandMark('timhortons.com');
-  if (name.includes('tehzeeb')) return brandMark('tehzeeb.com.pk');
+  if (name.includes('domino')) return 'https://icon.horse/icon/dominos.com';
+  if (name.includes('starbucks')) return 'https://icon.horse/icon/starbucks.com';
+  if (name.includes('cheezious')) return 'https://icon.horse/icon/cheezious.com';
+  if (name.includes('hardee')) return 'https://icon.horse/icon/hardees.com';
+  if (name.includes('popeyes')) return 'https://icon.horse/icon/popeyes.com';
+  if (name.includes('tim hortons')) return 'https://icon.horse/icon/timhortons.com';
+  if (name.includes('tehzeeb')) return 'https://icon.horse/icon/tehzeeb.com.pk';
   return null;
 };
 
@@ -687,12 +677,27 @@ const DashboardScreen = ({ navigation, route }) => {
           new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
         ]);
         if (ordersResponse.success && ordersResponse.data) {
-          const orders = ordersResponse.data;
+          // Deduplicate by unique id to prevent duplicate order cards
+          const seen = new Set();
+          const orders = ordersResponse.data.filter((o) => {
+            const uid = String(o.id || o._id || '');
+            if (!uid || seen.has(uid)) return false;
+            seen.add(uid);
+            return true;
+          });
           setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
           setCurrentOrders(orders.filter(isOpenOrder));
         }
       } catch {
-        const orders = await getData(ASYNC_STORAGE_KEYS.ORDERS) || [];
+        const rawOrders = await getData(ASYNC_STORAGE_KEYS.ORDERS) || [];
+        // Deduplicate fallback data as well
+        const seen = new Set();
+        const orders = rawOrders.filter((o) => {
+          const uid = String(o.id || o._id || '');
+          if (!uid || seen.has(uid)) return false;
+          seen.add(uid);
+          return true;
+        });
         setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
         setCurrentOrders(orders.filter(isOpenOrder));
       }
@@ -1265,10 +1270,16 @@ const DashboardScreen = ({ navigation, route }) => {
                 const category_id = category.id || category._id || category.name;
 
                 return (
-                  // Static showcase only — categories are intentionally not tappable.
-                  <View
+                  <TouchableOpacity
                     key={category_id}
                     style={styles.categoryCard}
+                    activeOpacity={0.8}
+                    onPress={() => navigation.navigate('StoreList', {
+                      categoryName: category.name,
+                      categoryId: category_id,
+                      areaName: selectedArea,
+                      userLocation: addressCoords ? { latitude: addressCoords.lat, longitude: addressCoords.lng, area: selectedArea } : { area: selectedArea },
+                    })}
                   >
                     <View style={styles.categoryIconContainer}>
                       {renderCategoryIcon(category)}
@@ -1276,7 +1287,7 @@ const DashboardScreen = ({ navigation, route }) => {
                     <Text style={styles.categoryNameText} numberOfLines={1}>
                       {category.name}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </ScrollView>
@@ -1302,9 +1313,10 @@ const DashboardScreen = ({ navigation, route }) => {
               snapToInterval={SLIDER_CARD_WIDTH + SPACING.md} snapToAlignment="start"
               contentContainerStyle={styles.sliderContentContainer}
             >
-              {currentOrders.map((order, index) => (
+              {currentOrders.map((order) => (
                 <TouchableOpacity
-                  key={order.id || index} style={styles.currentSliderCard}
+                  key={String(order.id || order._id)}
+                  style={styles.currentSliderCard}
                   activeOpacity={0.9} onPress={() => navigation.navigate('OrderDetails', { order })}
                 >
                   <View style={styles.sliderCardAccent} />
@@ -1737,9 +1749,10 @@ const DashboardScreen = ({ navigation, route }) => {
                   snapToInterval={SLIDER_CARD_WIDTH + SPACING.md} snapToAlignment="start"
                   contentContainerStyle={styles.sliderContentContainer}
                 >
-                  {recentOrders.map((order, index) => (
+                  {recentOrders.map((order) => (
                     <TouchableOpacity
-                      key={order.id || index} style={styles.recentSliderCard}
+                      key={String(order.id || order._id)}
+                      style={styles.recentSliderCard}
                       activeOpacity={0.9} onPress={() => navigation.navigate('OrderDetails', { order })}
                     >
                       <View style={styles.orderHeader}>
@@ -1876,10 +1889,7 @@ const DashboardScreen = ({ navigation, route }) => {
                     {logo ? (
                       <Image
                         source={typeof logo === 'string' ? { uri: logo } : logo}
-                        // Fixed box, no rounding — 'contain' letterboxes each mark
-                        // inside 26x26 so wide wordmarks and square icons line up.
-                        style={{ width: 26, height: 26, marginRight: 10 }}
-                        resizeMode="contain"
+                        style={{ width: 26, height: 26, marginRight: 10, borderRadius: 6, resizeMode: 'contain' }}
                       />
                     ) : isGoogle ? (
                       <Ionicons name="location" size={20} color="#EA4335" style={{ marginRight: 10 }} />
@@ -2009,11 +2019,7 @@ const styles = StyleSheet.create({
   heroTopSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   heroImageOuter: { width: 66, height: 66, borderRadius: 20, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginRight: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.7)', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 4 },
   heroImageInner: { width: 58, height: 58, borderRadius: 16, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: 4 },
-  // Fixed box + 'contain' keeps every mark at identical dimensions regardless of
-  // its native aspect ratio, so nothing stretches. No borderRadius here: rounding
-  // belongs on the white tile behind it (heroImageInner) — applying it to the
-  // image itself clips the corners off wide, flat wordmarks.
-  heroBrandImage: { width: 48, height: 48, resizeMode: 'contain' },
+  heroBrandImage: { width: 48, height: 48, borderRadius: 10, resizeMode: 'contain' },
   heroImageEmoji: { fontSize: 30 },
 
   heroTextContainer: { flex: 1 },
