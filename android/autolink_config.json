@@ -1,0 +1,736 @@
+{
+  "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp",
+  "reactNativePath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native",
+  "reactNativeVersion": "0.84",
+  "healthChecks": [],
+  "platforms": {
+    "android": {}
+  },
+  "assets": [
+    "./src/assets/fonts/"
+  ],
+  "dependencies": {
+    "@notifee/react-native": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@notifee/react-native",
+      "name": "@notifee/react-native",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@notifee/react-native/android",
+          "packageImportPath": "import io.invertase.notifee.NotifeePackage;",
+          "packageInstance": "new NotifeePackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@notifee/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-async-storage/async-storage": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-async-storage/async-storage",
+      "name": "@react-native-async-storage/async-storage",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-async-storage/async-storage/android",
+          "packageImportPath": "import com.reactnativecommunity.asyncstorage.AsyncStoragePackage;",
+          "packageInstance": "new AsyncStoragePackage()",
+          "buildTypes": [],
+          "libraryName": "rnasyncstorage",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-async-storage/async-storage/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-community/geolocation": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/geolocation",
+      "name": "@react-native-community/geolocation",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/geolocation/android",
+          "packageImportPath": "import com.reactnativecommunity.geolocation.GeolocationPackage;",
+          "packageInstance": "new GeolocationPackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/geolocation/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-community/image-editor": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/image-editor",
+      "name": "@react-native-community/image-editor",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/image-editor/android",
+          "packageImportPath": "import com.reactnativecommunity.imageeditor.ImageEditorPackage;",
+          "packageInstance": "new ImageEditorPackage()",
+          "buildTypes": [],
+          "libraryName": "RNCImageEditorSpec",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/image-editor/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-firebase/app": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/app",
+      "name": "@react-native-firebase/app",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/app/android",
+          "packageImportPath": "import io.invertase.firebase.app.ReactNativeFirebaseAppPackage;",
+          "packageInstance": "new ReactNativeFirebaseAppPackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/app/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-firebase/auth": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/auth",
+      "name": "@react-native-firebase/auth",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/auth/android",
+          "packageImportPath": "import io.invertase.firebase.auth.ReactNativeFirebaseAuthPackage;",
+          "packageInstance": "new ReactNativeFirebaseAuthPackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/auth/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-firebase/firestore": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/firestore",
+      "name": "@react-native-firebase/firestore",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/firestore/android",
+          "packageImportPath": "import io.invertase.firebase.firestore.ReactNativeFirebaseFirestorePackage;",
+          "packageInstance": "new ReactNativeFirebaseFirestorePackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/firestore/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-firebase/messaging": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/messaging",
+      "name": "@react-native-firebase/messaging",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/messaging/android",
+          "packageImportPath": "import io.invertase.firebase.messaging.ReactNativeFirebaseMessagingPackage;",
+          "packageInstance": "new ReactNativeFirebaseMessagingPackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/messaging/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-firebase/storage": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/storage",
+      "name": "@react-native-firebase/storage",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/storage/android",
+          "packageImportPath": "import io.invertase.firebase.storage.ReactNativeFirebaseStoragePackage;",
+          "packageInstance": "new ReactNativeFirebaseStoragePackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-firebase/storage/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native-google-signin/google-signin": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-google-signin/google-signin",
+      "name": "@react-native-google-signin/google-signin",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-google-signin/google-signin/android",
+          "packageImportPath": "import com.reactnativegooglesignin.RNGoogleSigninPackage;",
+          "packageInstance": "new RNGoogleSigninPackage()",
+          "buildTypes": [],
+          "libraryName": "RNGoogleSignInCGen",
+          "componentDescriptors": [
+            "RNGoogleSigninButtonComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-google-signin/google-signin/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "@react-native/new-app-screen": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native/new-app-screen",
+      "name": "@react-native/new-app-screen",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-navigation/bottom-tabs": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-navigation/bottom-tabs",
+      "name": "@react-navigation/bottom-tabs",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-navigation/native": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-navigation/native",
+      "name": "@react-navigation/native",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-navigation/stack": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-navigation/stack",
+      "name": "@react-navigation/stack",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@sayem314/react-native-keep-awake": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@sayem314/react-native-keep-awake",
+      "name": "@sayem314/react-native-keep-awake",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@sayem314/react-native-keep-awake/android",
+          "packageImportPath": "import com.sayem.keepawake.KCKeepAwakePackage;",
+          "packageInstance": "new KCKeepAwakePackage()",
+          "buildTypes": [],
+          "libraryName": "ReactNativeKCKeepAwakeSpec",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@sayem314/react-native-keep-awake/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react",
+      "name": "react",
+      "platforms": {
+        "android": null
+      }
+    },
+    "react-delegate-component": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-delegate-component",
+      "name": "react-delegate-component",
+      "platforms": {
+        "android": null
+      }
+    },
+    "react-native": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native",
+      "name": "react-native",
+      "platforms": {
+        "android": null
+      }
+    },
+    "react-native-encrypted-storage": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-encrypted-storage",
+      "name": "react-native-encrypted-storage",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-encrypted-storage/android",
+          "packageImportPath": "import com.emeraldsanto.encryptedstorage.RNEncryptedStoragePackage;",
+          "packageInstance": "new RNEncryptedStoragePackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-encrypted-storage/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-geolocation-service": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-geolocation-service",
+      "name": "react-native-geolocation-service",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-geolocation-service/android",
+          "packageImportPath": "import com.agontuk.RNFusedLocation.RNFusedLocationPackage;",
+          "packageInstance": "new RNFusedLocationPackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-geolocation-service/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-gesture-handler": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-gesture-handler",
+      "name": "react-native-gesture-handler",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-gesture-handler/android",
+          "packageImportPath": "import com.swmansion.gesturehandler.RNGestureHandlerPackage;",
+          "packageInstance": "new RNGestureHandlerPackage()",
+          "buildTypes": [],
+          "libraryName": "rngesturehandler_codegen",
+          "componentDescriptors": [
+            "RNGestureHandlerDetectorComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-gesture-handler/android/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-image-picker": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-image-picker",
+      "name": "react-native-image-picker",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-image-picker/android",
+          "packageImportPath": "import com.imagepicker.ImagePickerPackage;",
+          "packageInstance": "new ImagePickerPackage()",
+          "buildTypes": [],
+          "libraryName": "RNImagePickerSpec",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-image-picker/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-linear-gradient": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-linear-gradient",
+      "name": "react-native-linear-gradient",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-linear-gradient/android",
+          "packageImportPath": "import com.BV.LinearGradient.LinearGradientPackage;",
+          "packageInstance": "new LinearGradientPackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-linear-gradient/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-maps": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-maps",
+      "name": "react-native-maps",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-maps/android",
+          "packageImportPath": "import com.rnmaps.maps.MapsPackage;",
+          "packageInstance": "new MapsPackage()",
+          "buildTypes": [],
+          "libraryName": "RNMapsSpecs",
+          "componentDescriptors": [
+            "RNMapsCalloutComponentDescriptor",
+            "RNMapsCircleComponentDescriptor",
+            "RNMapsGoogleMapViewComponentDescriptor",
+            "RNMapsGoogleMarkerComponentDescriptor",
+            "RNMapsGooglePolygonComponentDescriptor",
+            "RNMapsMapViewComponentDescriptor",
+            "RNMapsMarkerComponentDescriptor",
+            "RNMapsOverlayComponentDescriptor",
+            "RNMapsPolygonComponentDescriptor",
+            "RNMapsPolylineComponentDescriptor",
+            "RNMapsUrlTileComponentDescriptor",
+            "RNMapsWMSTileComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-maps/android/src/main/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-reanimated": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-reanimated",
+      "name": "react-native-reanimated",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-reanimated/android",
+          "packageImportPath": "import com.swmansion.reanimated.ReanimatedPackage;",
+          "packageInstance": "new ReanimatedPackage()",
+          "buildTypes": [],
+          "libraryName": "rnreanimated",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-reanimated/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-safe-area-context": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-safe-area-context",
+      "name": "react-native-safe-area-context",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-safe-area-context/android",
+          "packageImportPath": "import com.th3rdwave.safeareacontext.SafeAreaContextPackage;",
+          "packageInstance": "new SafeAreaContextPackage()",
+          "buildTypes": [],
+          "libraryName": "safeareacontext",
+          "componentDescriptors": [
+            "RNCSafeAreaProviderComponentDescriptor",
+            "RNCSafeAreaViewComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-screens": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-screens",
+      "name": "react-native-screens",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-screens/android",
+          "packageImportPath": "import com.swmansion.rnscreens.RNScreensPackage;",
+          "packageInstance": "new RNScreensPackage()",
+          "buildTypes": [],
+          "libraryName": "rnscreens",
+          "componentDescriptors": [
+            "RNSFullWindowOverlayComponentDescriptor",
+            "RNSScreenContainerComponentDescriptor",
+            "RNSScreenNavigationContainerComponentDescriptor",
+            "RNSScreenStackHeaderConfigComponentDescriptor",
+            "RNSScreenStackHeaderSubviewComponentDescriptor",
+            "RNSScreenStackComponentDescriptor",
+            "RNSSearchBarComponentDescriptor",
+            "RNSScreenComponentDescriptor",
+            "RNSScreenFooterComponentDescriptor",
+            "RNSScreenContentWrapperComponentDescriptor",
+            "RNSModalScreenComponentDescriptor",
+            "RNSTabsHostComponentDescriptor",
+            "RNSSafeAreaViewComponentDescriptor",
+            "RNSStackScreenComponentDescriptor",
+            "RNSStackHeaderConfigComponentDescriptor",
+            "RNSStackHeaderSubviewComponentDescriptor",
+            "RNSFormSheetHostComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-screens/android/src/main/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-sound": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-sound",
+      "name": "react-native-sound",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-sound/android",
+          "packageImportPath": "import com.zmxv.RNSound.SoundPackage;",
+          "packageInstance": "new SoundPackage()",
+          "buildTypes": [],
+          "libraryName": "RNSoundSpec",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-sound/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-uuid": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-uuid",
+      "name": "react-native-uuid",
+      "platforms": {
+        "android": null
+      }
+    },
+    "react-native-vector-icons": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-vector-icons",
+      "name": "react-native-vector-icons",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-vector-icons/android",
+          "packageImportPath": "import com.oblador.vectoricons.VectorIconsPackage;",
+          "packageInstance": "new VectorIconsPackage()",
+          "buildTypes": [],
+          "libraryName": "RNVectorIconsSpec",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-vector-icons/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-webrtc": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-webrtc",
+      "name": "react-native-webrtc",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-webrtc/android",
+          "packageImportPath": "import com.oney.WebRTCModule.WebRTCModulePackage;",
+          "packageInstance": "new WebRTCModulePackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-webrtc/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-webview": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-webview",
+      "name": "react-native-webview",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-webview/android",
+          "packageImportPath": "import com.reactnativecommunity.webview.RNCWebViewPackage;",
+          "packageInstance": "new RNCWebViewPackage()",
+          "buildTypes": [],
+          "libraryName": "RNCWebViewSpec",
+          "componentDescriptors": [
+            "RNCWebViewComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-webview/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-worklets": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-worklets",
+      "name": "react-native-worklets",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-worklets/android",
+          "packageImportPath": "import com.swmansion.worklets.WorkletsPackage;",
+          "packageInstance": "new WorkletsPackage()",
+          "buildTypes": [],
+          "libraryName": "rnworklets",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-worklets/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-worklets-core": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-worklets-core",
+      "name": "react-native-worklets-core",
+      "platforms": {
+        "android": {
+          "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-worklets-core/android",
+          "packageImportPath": "import com.worklets.WorkletsCorePackage;",
+          "packageInstance": "new WorkletsCorePackage()",
+          "buildTypes": [],
+          "libraryName": "RNWorkletsSpec",
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-native-worklets-core/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "socket.io-client": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/socket.io-client",
+      "name": "socket.io-client",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@babel/core": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@babel/core",
+      "name": "@babel/core",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@babel/preset-env": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@babel/preset-env",
+      "name": "@babel/preset-env",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@babel/runtime": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@babel/runtime",
+      "name": "@babel/runtime",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-native-community/cli": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/cli",
+      "name": "@react-native-community/cli",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-native-community/cli-platform-android": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/cli-platform-android",
+      "name": "@react-native-community/cli-platform-android",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-native-community/cli-platform-ios": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native-community/cli-platform-ios",
+      "name": "@react-native-community/cli-platform-ios",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-native/babel-preset": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native/babel-preset",
+      "name": "@react-native/babel-preset",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-native/eslint-config": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native/eslint-config",
+      "name": "@react-native/eslint-config",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-native/metro-config": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native/metro-config",
+      "name": "@react-native/metro-config",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@react-native/typescript-config": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@react-native/typescript-config",
+      "name": "@react-native/typescript-config",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@types/jest": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@types/jest",
+      "name": "@types/jest",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@types/react": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@types/react",
+      "name": "@types/react",
+      "platforms": {
+        "android": null
+      }
+    },
+    "@types/react-test-renderer": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/@types/react-test-renderer",
+      "name": "@types/react-test-renderer",
+      "platforms": {
+        "android": null
+      }
+    },
+    "eslint": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/eslint",
+      "name": "eslint",
+      "platforms": {
+        "android": null
+      }
+    },
+    "jest": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/jest",
+      "name": "jest",
+      "platforms": {
+        "android": null
+      }
+    },
+    "prettier": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/prettier",
+      "name": "prettier",
+      "platforms": {
+        "android": null
+      }
+    },
+    "react-test-renderer": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/react-test-renderer",
+      "name": "react-test-renderer",
+      "platforms": {
+        "android": null
+      }
+    },
+    "typescript": {
+      "root": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/node_modules/typescript",
+      "name": "typescript",
+      "platforms": {
+        "android": null
+      }
+    }
+  },
+  "project": {
+    "android": {
+      "sourceDir": "/Users/utimatemobileapps/Desktop/Robotinn/RobotInn-CustomerApp/android",
+      "appName": "app",
+      "packageName": "com.robotinncustomerapp",
+      "applicationId": "com.robotinncustomerapp",
+      "mainActivity": ".MainActivity",
+      "assets": []
+    }
+  }
+}

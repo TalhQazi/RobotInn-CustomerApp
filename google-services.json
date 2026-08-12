@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "301557654113",
+    "project_id": "robotin-2a51b",
+    "storage_bucket": "robotin-2a51b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:301557654113:android:25af696c4c065d4bd1c020",
+        "android_client_info": {
+          "package_name": "com.robotinncustomerapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8Dbpbk_IPYGw0gRKuSDLDsTmm8vs1xbc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:301557654113:android:398b3c100933444dd1c020",
+        "android_client_info": {
+          "package_name": "com.robotinnriderapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8Dbpbk_IPYGw0gRKuSDLDsTmm8vs1xbc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

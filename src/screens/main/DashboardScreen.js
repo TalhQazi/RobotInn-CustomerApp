@@ -677,12 +677,27 @@ const DashboardScreen = ({ navigation, route }) => {
           new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
         ]);
         if (ordersResponse.success && ordersResponse.data) {
-          const orders = ordersResponse.data;
+          // Deduplicate by unique id to prevent duplicate order cards
+          const seen = new Set();
+          const orders = ordersResponse.data.filter((o) => {
+            const uid = String(o.id || o._id || '');
+            if (!uid || seen.has(uid)) return false;
+            seen.add(uid);
+            return true;
+          });
           setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
           setCurrentOrders(orders.filter(isOpenOrder));
         }
       } catch {
-        const orders = await getData(ASYNC_STORAGE_KEYS.ORDERS) || [];
+        const rawOrders = await getData(ASYNC_STORAGE_KEYS.ORDERS) || [];
+        // Deduplicate fallback data as well
+        const seen = new Set();
+        const orders = rawOrders.filter((o) => {
+          const uid = String(o.id || o._id || '');
+          if (!uid || seen.has(uid)) return false;
+          seen.add(uid);
+          return true;
+        });
         setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
         setCurrentOrders(orders.filter(isOpenOrder));
       }
@@ -1220,7 +1235,8 @@ const DashboardScreen = ({ navigation, route }) => {
                   </TouchableOpacity>
                 </LinearGradient>
               </View>
-            ))}
+              );
+            })}
           </ScrollView>
           <View style={styles.paginationContainer}>
             {HERO_CARDS.map((_, i) => (
@@ -1297,9 +1313,10 @@ const DashboardScreen = ({ navigation, route }) => {
               snapToInterval={SLIDER_CARD_WIDTH + SPACING.md} snapToAlignment="start"
               contentContainerStyle={styles.sliderContentContainer}
             >
-              {currentOrders.map((order, index) => (
+              {currentOrders.map((order) => (
                 <TouchableOpacity
-                  key={order.id || index} style={styles.currentSliderCard}
+                  key={String(order.id || order._id)}
+                  style={styles.currentSliderCard}
                   activeOpacity={0.9} onPress={() => navigation.navigate('OrderDetails', { order })}
                 >
                   <View style={styles.sliderCardAccent} />
@@ -1732,9 +1749,10 @@ const DashboardScreen = ({ navigation, route }) => {
                   snapToInterval={SLIDER_CARD_WIDTH + SPACING.md} snapToAlignment="start"
                   contentContainerStyle={styles.sliderContentContainer}
                 >
-                  {recentOrders.map((order, index) => (
+                  {recentOrders.map((order) => (
                     <TouchableOpacity
-                      key={order.id || index} style={styles.recentSliderCard}
+                      key={String(order.id || order._id)}
+                      style={styles.recentSliderCard}
                       activeOpacity={0.9} onPress={() => navigation.navigate('OrderDetails', { order })}
                     >
                       <View style={styles.orderHeader}>

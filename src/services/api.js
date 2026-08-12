@@ -1314,7 +1314,82 @@ export const chatAPI = {
         console.error('Error listening to messages:', err);
       });
   },
+
+  /**
+   * Upload a media file to Firebase Storage and save a message record in
+   * Firestore.  The `file` object must have at minimum:
+   *   { uri, name, type }   (the shape returned by react-native-image-picker)
+   *
+   * Returns the same shape as sendMessage so callers can treat both uniformly.
+   */
+  sendMediaMessage: async (conversationId, file) => {
+    const firebaseUser = auth().currentUser;
+    if (!firebaseUser) throw new Error('Authentication required');
+
+    const { uri, name, type } = file;
+    const timestamp = Date.now();
+    const safeName = name || `attachment_${timestamp}`;
+    const storagePath = `chat_media/${conversationId}/${timestamp}_${safeName}`;
+
+    // Upload to Firebase Storage
+    const ref = storage().ref(storagePath);
+    await ref.putFile(uri);
+    const mediaUrl = await ref.getDownloadURL();
+
+    const newMessage = {
+      senderId: firebaseUser.uid,
+      text: '',
+      mediaUrl,
+      mediaType: type || 'application/octet-stream',
+      mediaName: safeName,
+      createdAt: new Date().toISOString(),
+    };
+
+    const docRef = await firestore()
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('messages')
+      .add(newMessage);
+
+    const previewText = (type || '').startsWith('image/') ? '📷 Photo' : `📎 ${safeName}`;
+
+    await firestore().collection('conversations').doc(conversationId).update({
+      lastMessage: {
+        text: previewText,
+        senderId: firebaseUser.uid,
+        createdAt: new Date().toISOString(),
+      },
+    });
+
+    // Send notification to recipient
+    try {
+      const convDoc = await firestore().collection('conversations').doc(conversationId).get();
+      if (checkExists(convDoc)) {
+        const convData = convDoc.data();
+        const participants = convData?.participants || [];
+        const recipientId = participants.find(p => p !== firebaseUser.uid);
+        if (recipientId) {
+          const senderDoc = await firestore().collection('users').doc(firebaseUser.uid).get();
+          const senderName = checkExists(senderDoc) ? (senderDoc.data()?.name || 'User') : 'User';
+          await firestore().collection('notifications').add({
+            userId: recipientId,
+            title: `New message from ${senderName}`,
+            message: previewText,
+            type: 'chat',
+            read: false,
+            createdAt: new Date().toISOString(),
+            data: { conversationId, senderId: firebaseUser.uid },
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error writing media chat notification:', err);
+    }
+
+    return { success: true, data: { id: docRef.id, ...newMessage } };
+  },
 };
+
 
 export async function openRiderChat({ riderId, orderCode, autoMessage }) {
   const res = await chatAPI.startConversation(riderId, orderCode);

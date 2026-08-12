@@ -1,0 +1,14 @@
+const path = require('path');
+const root = path.join(__dirname, '..');
+console.log(JSON.stringify({
+  root,
+  reactNativePath: path.join(root, 'node_modules/react-native'),
+  project: {
+    android: {
+      sourceDir: path.join(root, 'android'),
+      appName: 'app',
+      packageName: 'com.robotinncustomerapp'
+    }
+  },
+  dependencies: {}
+}));
