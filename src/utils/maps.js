@@ -314,6 +314,51 @@ export function resolveAreaCoords(areaName) {
 // ─── Store Fetch In-Memory Cache ──────────────────────────────────────────────
 const storeFetchCache = new Map();
 
+// ─── Google Places Nearby Search — category → Place type mapping ───────────────
+// Maps app category keywords to Google Places standard types.
+// Ref: https://developers.google.com/maps/documentation/places/web-service/supported_types
+const CATEGORY_GOOGLE_TYPES = {
+  'groceries':       ['grocery_or_supermarket', 'supermarket'],
+  'grocery':         ['grocery_or_supermarket', 'supermarket'],
+  'fresh bazaar':    ['grocery_or_supermarket', 'food'],
+  'freshbazaar':     ['grocery_or_supermarket'],
+  'meat':            ['grocery_or_supermarket', 'food'],
+  'pharmacy':        ['pharmacy'],
+  'health':          ['pharmacy', 'hospital'],
+  'medical':         ['pharmacy', 'hospital'],
+  'fruits':          ['grocery_or_supermarket'],
+  'fruit':           ['grocery_or_supermarket'],
+  'bakery':          ['bakery'],
+  'bakers':          ['bakery'],
+  'drink corners':   ['cafe', 'bar'],
+  'drink corner':    ['cafe'],
+  'drinks':          ['cafe', 'bar'],
+  'cosmetics':       ['beauty_salon', 'hair_care'],
+  'cosmetic':        ['beauty_salon'],
+  'stationery':      ['book_store'],
+  'restaurant':      ['restaurant'],
+  'food':            ['restaurant', 'meal_takeaway', 'cafe'],
+  'electronics':     ['electronics_store'],
+  'clothing':        ['clothing_store'],
+  'mart':            ['grocery_or_supermarket', 'supermarket'],
+  'marts':           ['grocery_or_supermarket', 'supermarket'],
+  'supermarket':     ['supermarket'],
+  'hardware':        ['hardware_store'],
+  'pet':             ['pet_store'],
+  'pets':            ['pet_store'],
+  'baby':            ['department_store'],
+};
+
+/** Resolves an app category name to the best single Google Places type string. */
+function getGooglePlacesTypeForCategory(categoryName) {
+  const lower = (categoryName || '').toLowerCase().trim();
+  if (CATEGORY_GOOGLE_TYPES[lower]) return CATEGORY_GOOGLE_TYPES[lower][0];
+  for (const [key, types] of Object.entries(CATEGORY_GOOGLE_TYPES)) {
+    if (lower.includes(key) || key.includes(lower)) return types[0];
+  }
+  return 'establishment';
+}
+
 // ─── Overpass API store tags for each category ────────────────────────────────
 const CATEGORY_OSM_TAGS = {
   'groceries':       [['shop', 'supermarket'], ['shop', 'convenience'], ['shop', 'grocery'], ['shop', 'department_store']],
@@ -501,42 +546,131 @@ export function getFallbackStoresForAreaAndCategory(areaName = '', categoryName 
   }));
 }
 
+// ─── Normalise a single Google Places result into the common store shape ───────
+function normalizeGooglePlaceResult(place, cleanCatName, cleanArea) {
+  const loc = place.geometry?.location;
+  const vicinity = place.vicinity || place.formatted_address || `${cleanArea}, Pakistan`;
+  return {
+    place_id: place.place_id,
+    placeId: place.place_id,
+    name: place.name,
+    address: vicinity,
+    rating: place.rating != null ? String(place.rating) : '4.5',
+    userRatingsTotal: place.user_ratings_total || 0,
+    type: cleanCatName || 'Store',
+    category: cleanCatName || 'Store',
+    isOpen: place.opening_hours?.open_now ?? null,
+    lat: loc?.lat ?? null,
+    lng: loc?.lng ?? null,
+    isGoogleStore: true,
+    isRealtime: true,       // distinguishes live Places results from fallbacks
+    isFallbackStore: false,
+    photoRef: place.photos?.[0]?.photo_reference ?? null,
+  };
+}
+
+/**
+ * Fetches real-time nearby stores for the given category and area using a
+ * three-tier strategy:
+ *
+ *   Tier 1 — Google Places Nearby Search API  (radius = 5 km)  ← primary
+ *   Tier 2 — Overpass OSM                     (radius = 8 km)  ← secondary fallback
+ *   Tier 3 — Curated brand list per category                    ← last resort
+ *
+ * All three tiers emit the same object shape so callers (DashboardScreen,
+ * StoreListScreen) work transparently without any code changes.
+ */
 export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName = '', lat = null, lng = null) {
-  const cleanCatName = (typeof category === 'object' && category !== null ? category.name || category.title : String(category || ''))
+  // Strip emoji / non-printable characters from category string
+  const cleanCatName = (typeof category === 'object' && category !== null
+    ? category.name || category.title
+    : String(category || ''))
     .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, '')
     .trim();
   const cleanArea = String(areaName || 'Islamabad').trim();
   const cacheKey = `${cleanCatName.toLowerCase()}_${cleanArea.toLowerCase()}`;
 
+  // Pre-compute brand fallbacks — always available regardless of network
   const fallbackStores = getFallbackStoresForAreaAndCategory(cleanArea, cleanCatName);
 
+  // Return cached results if already populated
   if (storeFetchCache.has(cacheKey) && storeFetchCache.get(cacheKey).length > 0) {
     return storeFetchCache.get(cacheKey);
   }
 
+  // ── Resolve coordinates for the target area ────────────────────────────────
+  let targetLat = lat;
+  let targetLng = lng;
+
+  if (!targetLat || !targetLng) {
+    const coords = resolveAreaCoords(cleanArea);
+    if (coords) { targetLat = coords.lat; targetLng = coords.lng; }
+  }
+  if (!targetLat || !targetLng) {
+    // Default to Islamabad city centre
+    targetLat = 33.6844;
+    targetLng = 73.0479;
+  }
+
+  // ── TIER 1: Google Places Nearby Search API ────────────────────────────────
   try {
-    let targetLat = lat;
-    let targetLng = lng;
+    const placeType = getGooglePlacesTypeForCategory(cleanCatName);
+    const radius = 5000; // 5 km as specified
 
-    if (!targetLat || !targetLng) {
-      const coords = resolveAreaCoords(cleanArea);
-      if (coords) { targetLat = coords.lat; targetLng = coords.lng; }
+    const placesUrl =
+      `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
+      `?location=${targetLat},${targetLng}` +
+      `&radius=${radius}` +
+      `&type=${encodeURIComponent(placeType)}` +
+      `&keyword=${encodeURIComponent(cleanCatName)}` +
+      `&key=${GOOGLE_MAPS_API_KEY}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const response = await fetch(placesUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const json = await response.json();
+
+      if (json.status === 'OK' && Array.isArray(json.results) && json.results.length > 0) {
+        // Deduplicate by name. Seed with brand fallbacks (lowest priority) so
+        // well-known chains always appear; live Places results overwrite them.
+        const storeMap = new Map();
+        fallbackStores.forEach(s => storeMap.set(s.name.toLowerCase().trim(), s));
+
+        json.results.forEach(place => {
+          if (!place.name) return;
+          const normalized = normalizeGooglePlaceResult(place, cleanCatName, cleanArea);
+          storeMap.set(normalized.name.toLowerCase().trim(), normalized);
+        });
+
+        const finalResults = Array.from(storeMap.values());
+        storeFetchCache.set(cacheKey, finalResults);
+        console.log(`[GooglePlaces] ${finalResults.length} stores — "${cleanCatName}" near "${cleanArea}"`);
+        return finalResults;
+      }
+
+      console.warn(`[GooglePlaces] status="${json.status}" — falling back to Overpass`);
+    } else {
+      console.warn(`[GooglePlaces] HTTP ${response.status} — falling back to Overpass`);
     }
+  } catch (gErr) {
+    console.warn('[GooglePlaces] Nearby Search failed:', gErr?.message);
+  }
 
-    if (!targetLat || !targetLng) {
-      targetLat = 33.6844;
-      targetLng = 73.0479;
-    }
-
+  // ── TIER 2: Overpass OSM fallback ─────────────────────────────────────────
+  try {
     const osmTags = getOsmTagsForCategory(cleanCatName);
     const radiusMeters = 8000;
 
-    // Use nwr (node, way, relation) to query points, building polygons, and area relations
-    let tagFilters = osmTags
+    // Use nwr (node, way, relation) to cover points, building polygons & area relations
+    const tagFilters = osmTags
       .map(([k, v]) => `nwr["${k}"="${v}"](around:${radiusMeters},${targetLat},${targetLng});`)
       .join('\n');
 
-    let overpassQuery = `[out:json][timeout:8];(\n${tagFilters}\n);out body center;`;
+    const overpassQuery = `[out:json][timeout:8];(\n${tagFilters}\n);out body center;`;
 
     const endpoints = [
       'https://overpass-api.de/api/interpreter',
@@ -551,31 +685,29 @@ export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-        const response = await fetch(overpassUrl, {
+        const res = await fetch(overpassUrl, {
           signal: controller.signal,
           headers: { 'User-Agent': 'RobotInn-CustomerApp/1.0' },
         });
         clearTimeout(timeoutId);
 
-        if (response.ok) {
-          data = await response.json();
+        if (res.ok) {
+          data = await res.json();
           if (data?.elements?.length > 0) break;
         }
       } catch (epErr) {
-        console.warn(`[Overpass] Endpoint ${ep} failed:`, epErr?.message);
+        console.warn(`[Overpass] ${ep} failed:`, epErr?.message);
       }
     }
 
-    let elements = data?.elements || [];
-
+    const elements = data?.elements || [];
     const storeMap = new Map();
-    // Add fallback stores first so brand & local stores are guaranteed to exist
+    // Seed with brand fallbacks
     fallbackStores.forEach(s => storeMap.set(s.name.toLowerCase().trim(), s));
 
     for (const el of elements) {
       const name = el.tags?.name || el.tags?.['name:en'] || el.tags?.['name:ur'];
       if (!name) continue;
-      const nameKey = name.toLowerCase().trim();
 
       const elLat = el.lat || el.center?.lat;
       const elLng = el.lon || el.center?.lon;
@@ -585,7 +717,7 @@ export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName 
         el.tags?.['addr:suburb'] || cleanArea,
       ].filter(Boolean).join(', ') || `${cleanArea}, Islamabad`;
 
-      storeMap.set(nameKey, {
+      storeMap.set(name.toLowerCase().trim(), {
         place_id: `osm_${el.type}_${el.id}`,
         placeId: `osm_${el.type}_${el.id}`,
         name,
@@ -595,6 +727,8 @@ export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName 
         lat: elLat,
         lng: elLng,
         isGoogleStore: true,
+        isRealtime: false,
+        isFallbackStore: false,
       });
     }
 
@@ -602,9 +736,166 @@ export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName 
     storeFetchCache.set(cacheKey, finalResults);
     return finalResults;
   } catch (err) {
-    console.warn('[StoreFetch] Master fetch error:', err?.message || err);
-    storeFetchCache.set(cacheKey, fallbackStores);
-    return fallbackStores;
+    console.warn('[StoreFetch] Overpass error:', err?.message || err);
   }
+
+  // ── TIER 3: Curated brand / static fallback ────────────────────────────────
+  storeFetchCache.set(cacheKey, fallbackStores);
+  return fallbackStores;
 }
 
+
+
+function getOsmTagsForCategory(categoryName) {
+  const lower = (categoryName || '').toLowerCase().trim();
+  if (CATEGORY_OSM_TAGS[lower]) return CATEGORY_OSM_TAGS[lower];
+  for (const [key, tags] of Object.entries(CATEGORY_OSM_TAGS)) {
+    if (lower.includes(key) || key.includes(lower)) return tags;
+  }
+  return [['shop', lower.replace(/\s+/g, '_')], ['shop', 'supermarket'], ['shop', 'convenience']];
+}
+
+async function geocodeAreaNominatim(areaName) {
+  if (!areaName) return null;
+  const staticCoords = resolveAreaCoords(areaName);
+  if (staticCoords) return staticCoords;
+
+  try {
+    const query = encodeURIComponent(`${areaName}, Pakistan`);
+    const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=pk`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'RobotInn-CustomerApp/1.0' }
+    });
+    clearTimeout(timeoutId);
+    const json = await resp.json();
+    if (json?.length > 0) {
+      return { lat: parseFloat(json[0].lat), lng: parseFloat(json[0].lon) };
+    }
+  } catch (e) {
+    console.warn('[Nominatim] geocode error:', e?.message);
+  }
+  return null;
+}
+
+const GENERAL_BRAND_STORES_BY_CATEGORY = {
+  pharmacy: [
+    { name: 'Shaheen Chemist', rating: '4.9', isInternational: true, type: 'pharmacy' },
+    { name: 'D.Watson Pharmacy', rating: '4.8', isInternational: true, type: 'pharmacy' },
+    { name: 'Shifa Pharmacy', rating: '4.8', isInternational: true, type: 'pharmacy' },
+    { name: 'Servaid Pharmacy', rating: '4.7', isInternational: true, type: 'pharmacy' },
+    { name: 'Metro Pharmacy', rating: '4.6', isInternational: false, type: 'pharmacy' },
+    { name: 'Medical Store & Pharmacy', rating: '4.5', isInternational: false, type: 'pharmacy' },
+    { name: 'City Pharmacy & Medical', rating: '4.5', isInternational: false, type: 'pharmacy' },
+  ],
+  food: [
+    { name: 'KFC', rating: '4.8', isInternational: true, type: 'food' },
+    { name: "McDonald's", rating: '4.8', isInternational: true, type: 'food' },
+    { name: 'Pizza Hut', rating: '4.7', isInternational: true, type: 'food' },
+    { name: 'Subway', rating: '4.7', isInternational: true, type: 'food' },
+    { name: 'Cheezious', rating: '4.9', isInternational: true, type: 'food' },
+    { name: 'Howdy', rating: '4.8', isInternational: true, type: 'food' },
+    { name: 'Tehzeeb Bakers & Foods', rating: '4.9', isInternational: true, type: 'food' },
+    { name: 'Savour Foods', rating: '4.8', isInternational: false, type: 'food' },
+  ],
+  grocery: [
+    { name: 'SaveMart', rating: '4.8', isInternational: true, type: 'grocery' },
+    { name: 'Punjab Cash & Carry', rating: '4.7', isInternational: true, type: 'grocery' },
+    { name: 'Greenvalley Premium Hypermarket', rating: '4.9', isInternational: true, type: 'grocery' },
+    { name: 'Imtiaz Super Market', rating: '4.8', isInternational: true, type: 'grocery' },
+    { name: 'Corner Grocery Store', rating: '4.5', isInternational: false, type: 'grocery' },
+  ],
+  bakery: [
+    { name: 'Tehzeeb Bakery', rating: '4.9', isInternational: true, type: 'bakery' },
+    { name: 'Rahat Bakery', rating: '4.7', isInternational: true, type: 'bakery' },
+    { name: 'Layered Bakery', rating: '4.8', isInternational: false, type: 'bakery' },
+    { name: 'Kitchen Cuisine', rating: '4.7', isInternational: false, type: 'bakery' },
+  ],
+  meat: [
+    { name: 'Meat One', rating: '4.8', isInternational: true, type: 'meat' },
+    { name: 'Kausar Chicken & Meat', rating: '4.6', isInternational: false, type: 'meat' },
+    { name: 'Fresh Butcher Shop', rating: '4.5', isInternational: false, type: 'meat' },
+  ],
+  cosmetics: [
+    { name: 'Scentsation Cosmetics', rating: '4.8', isInternational: true, type: 'cosmetics' },
+    { name: 'Saeed Ghani Beauty Store', rating: '4.7', isInternational: true, type: 'cosmetics' },
+    { name: 'Nivea Beauty Store', rating: '4.6', isInternational: false, type: 'cosmetics' },
+    { name: 'Glamour Cosmetics Shop', rating: '4.5', isInternational: false, type: 'cosmetics' },
+  ],
+  stationery: [
+    { name: 'Saeed Book Bank', rating: '4.9', isInternational: true, type: 'stationery' },
+    { name: 'London Book Co', rating: '4.7', isInternational: true, type: 'stationery' },
+    { name: 'Stationery & Copy Corner', rating: '4.5', isInternational: false, type: 'stationery' },
+  ],
+  electronics: [
+    { name: 'Mi Official Store', rating: '4.8', isInternational: true, type: 'electronics' },
+    { name: 'Samsung Experience Store', rating: '4.8', isInternational: true, type: 'electronics' },
+    { name: 'Mobile & Computer Zone', rating: '4.6', isInternational: false, type: 'electronics' },
+  ],
+  pet_supplies: [
+    { name: 'Pet Care & Supplies Store', rating: '4.7', isInternational: false, type: 'pet_supplies' },
+    { name: 'Vet & Animal Care Center', rating: '4.6', isInternational: false, type: 'pet_supplies' },
+  ],
+  dairy: [
+    { name: 'Dairy & Milk Fresh Shop', rating: '4.7', isInternational: false, type: 'dairy' },
+  ],
+  fruits: [
+    { name: 'Fresh Fruits & Produce Market', rating: '4.7', isInternational: false, type: 'fruits' },
+  ],
+  vegetables: [
+    { name: 'Sabzi & Fresh Veggie Store', rating: '4.7', isInternational: false, type: 'vegetables' },
+  ],
+  soft_drinks: [
+    { name: 'Beverage & Cold Drink Corner', rating: '4.6', isInternational: false, type: 'soft_drinks' },
+  ],
+};
+
+export function getFallbackStoresForAreaAndCategory(areaName = '', categoryName = '') {
+  const cleanArea = String(areaName || 'Islamabad').trim();
+  const catKey = String(categoryName || 'food').toLowerCase().trim();
+
+  let targetCatKey = 'food';
+  if (catKey.includes('pharma') || catKey.includes('health') || catKey.includes('medical') || catKey.includes('chemist') || catKey.includes('medicine')) {
+    targetCatKey = 'pharmacy';
+  } else if (catKey.includes('grocer') || catKey.includes('mart') || catKey.includes('supermarket')) {
+    targetCatKey = 'grocery';
+  } else if (catKey.includes('baker') || catKey.includes('cake') || catKey.includes('bread') || catKey.includes('sweet')) {
+    targetCatKey = 'bakery';
+  } else if (catKey.includes('meat') || catKey.includes('chicken') || catKey.includes('butcher')) {
+    targetCatKey = 'meat';
+  } else if (catKey.includes('cosmetic') || catKey.includes('beauty') || catKey.includes('makeup') || catKey.includes('skin')) {
+    targetCatKey = 'cosmetics';
+  } else if (catKey.includes('stationery') || catKey.includes('book') || catKey.includes('paper')) {
+    targetCatKey = 'stationery';
+  } else if (catKey.includes('electronic') || catKey.includes('mobile') || catKey.includes('tech') || catKey.includes('computer')) {
+    targetCatKey = 'electronics';
+  } else if (catKey.includes('pet')) {
+    targetCatKey = 'pet_supplies';
+  } else if (catKey.includes('dairy') || catKey.includes('milk')) {
+    targetCatKey = 'dairy';
+  } else if (catKey.includes('fruit')) {
+    targetCatKey = 'fruits';
+  } else if (catKey.includes('veg') || catKey.includes('sabzi')) {
+    targetCatKey = 'vegetables';
+  } else if (catKey.includes('drink') || catKey.includes('soda') || catKey.includes('beverage')) {
+    targetCatKey = 'soft_drinks';
+  }
+
+  const baseList = GENERAL_BRAND_STORES_BY_CATEGORY[targetCatKey] || GENERAL_BRAND_STORES_BY_CATEGORY['food'];
+
+  return baseList.map((item, idx) => ({
+    place_id: `fallback_${cleanArea.toLowerCase()}_${targetCatKey}_${idx}`,
+    placeId: `fallback_${cleanArea.toLowerCase()}_${targetCatKey}_${idx}`,
+    name: item.name.includes(cleanArea) ? item.name : `${item.name} ${cleanArea}`,
+    address: `${cleanArea}, Islamabad`,
+    rating: item.rating,
+    type: targetCatKey,
+    category: targetCatKey,
+    categoryName: targetCatKey,
+    isGoogleStore: true,
+    isFallbackStore: true,
+    isInternational: item.isInternational,
+  }));
+}

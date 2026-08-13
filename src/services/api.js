@@ -154,6 +154,14 @@ export const authAPI = {
     // Present the user as a customer in this app
     profile.type = 'customer';
     profile.types = currentTypes;
+
+    // ── Unban fix: if the backend reports the user is NOT banned, strip any
+    // stale ban flags from the local profile before persisting it so a
+    // previously-banned-then-unbanned user is never stuck on the ban screen.
+    if (!profile.isBanned && !profile.is_banned) {
+      delete profile.isBanned;
+      delete profile.is_banned;
+    }
     
     await Promise.all([
       storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
@@ -183,6 +191,17 @@ export const authAPI = {
   signInWithGoogle: async () => {
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+      // ── Account-chooser fix: sign out of any cached Google session first so
+      // the account picker is always shown instead of silently reusing the last
+      // signed-in account.
+      try {
+        await GoogleSignin.signOut();
+      } catch (signOutErr) {
+        // Non-fatal — proceed even if no session was cached
+        console.warn('GoogleSignin pre-signOut warning:', signOutErr);
+      }
+
       const signInResult = await GoogleSignin.signIn();
       
       const idToken = signInResult.data ? signInResult.data.idToken : signInResult.idToken;
@@ -220,6 +239,13 @@ export const authAPI = {
       }
       profile.type = 'customer';
       profile.types = currentTypes;
+
+      // ── Unban fix: clear stale local ban flags if the server profile shows
+      // the user is not banned, preventing a cached ban from blocking access.
+      if (!profile.isBanned && !profile.is_banned) {
+        delete profile.isBanned;
+        delete profile.is_banned;
+      }
 
       await Promise.all([
         storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
