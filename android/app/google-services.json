@@ -14,14 +14,6 @@
       },
       "oauth_client": [
         {
-          "client_id": "301557654113-5f2etps7hsmne4bg6fa3dormpjiljdr1.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.robotinncustomerapp",
-            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
-          }
-        },
-        {
           "client_id": "301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com",
           "client_type": 3
         }
