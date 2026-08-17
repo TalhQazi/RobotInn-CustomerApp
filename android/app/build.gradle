@@ -48,6 +48,11 @@ android {
             abiFilters "arm64-v8a"
         }
     }
+    externalNativeBuild {
+        cmake {
+            buildStagingDirectory = file("C:/tmp/cxx")
+        }
+    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')

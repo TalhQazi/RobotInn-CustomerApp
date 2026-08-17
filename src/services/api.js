@@ -36,6 +36,7 @@ const parseGlobalTimestamp = (obj) => {
 // Configure Google Sign-In
 GoogleSignin.configure({
   webClientId: '301557654113-qih2tg9iq4jp6avo8jehr292fds3hjsh.apps.googleusercontent.com',
+  offlineAccess: false,
 });
 
 // Native Firebase replacement for the Express/Node REST backend
