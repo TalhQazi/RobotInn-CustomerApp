@@ -93,6 +93,45 @@ const renderCategoryIcon = (category) => {
   );
 };
 
+const parseDateToMs = (dateVal) => {
+  if (!dateVal) return 0;
+  try {
+    if (typeof dateVal.toDate === 'function') return dateVal.toDate().getTime();
+    if (typeof dateVal === 'object') {
+      if (typeof dateVal.seconds === 'number') return dateVal.seconds * 1000;
+      if (typeof dateVal._seconds === 'number') return dateVal._seconds * 1000;
+    }
+    if (typeof dateVal === 'number') return dateVal > 1e11 ? dateVal : dateVal * 1000;
+    const d = new Date(dateVal);
+    return !isNaN(d.getTime()) ? d.getTime() : 0;
+  } catch (_) {
+    return 0;
+  }
+};
+
+const formatOrderDateSafe = (dateVal) => {
+  if (!dateVal) return 'Recently';
+  try {
+    if (typeof dateVal.toDate === 'function') {
+      return dateVal.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    if (typeof dateVal === 'object') {
+      if (typeof dateVal.seconds === 'number') {
+        return new Date(dateVal.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+      if (typeof dateVal._seconds === 'number') {
+        return new Date(dateVal._seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+    }
+    const d = new Date(dateVal);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+  } catch (_) {}
+  return 'Recently';
+};
+
+
 
 
 
@@ -538,10 +577,9 @@ const DashboardScreen = ({ navigation, route }) => {
   }, []);
 
   // ── Categories ─────────────────────────────────────────────────────────────
-  // Live Firestore subscription + 4s polling fallback + AppState listener.
+  // Live Firestore subscription with resilient lifecycle management
   useEffect(() => {
     let unsubscribe = null;
-    let pollTimer = null;
 
     const applyCategoriesList = (list) => {
       const activeList = (Array.isArray(list) ? list : []).filter(c => c.active !== false);
@@ -561,7 +599,7 @@ const DashboardScreen = ({ navigation, route }) => {
         if (res.success && Array.isArray(res.data)) {
           applyCategoriesList(res.data);
         }
-      });
+      }).catch(() => {});
 
       // 2. Real-time Firestore snapshot listener
       unsubscribe = categoriesAPI.subscribe(
@@ -572,39 +610,23 @@ const DashboardScreen = ({ navigation, route }) => {
           console.warn('❌ Categories live subscription error:', err);
           categoriesAPI.getAll().then(res => {
             if (res.success) applyCategoriesList(res.data);
-          });
+          }).catch(() => {});
         },
       );
     };
 
     startSubscription();
 
-    // 3. Fallback background polling every 4 seconds to guarantee additions/deletions update instantly
-    pollTimer = setInterval(async () => {
-      try {
-        const res = await categoriesAPI.getAll();
-        if (res.success && Array.isArray(res.data)) {
-          const activeList = res.data.filter(c => c.active !== false);
-          setCategories(prev => {
-            if (JSON.stringify(prev) !== JSON.stringify(activeList)) {
-              return activeList;
-            }
-            return prev;
-          });
-        }
-      } catch (_) { }
-    }, 4000);
-
     const appStateSub = AppState.addEventListener('change', nextState => {
       if (nextState === 'active') {
-        console.log('📡 App foregrounded — restarting categories listener');
         startSubscription();
       }
     });
 
     return () => {
-      if (unsubscribe) { try { unsubscribe(); } catch (_) { } }
-      if (pollTimer) clearInterval(pollTimer);
+      if (typeof unsubscribe === 'function') {
+        try { unsubscribe(); } catch (_) { }
+      }
       appStateSub.remove();
     };
   }, []);
@@ -698,7 +720,7 @@ const DashboardScreen = ({ navigation, route }) => {
             seen.add(uid);
             return true;
           });
-          setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
+          setRecentOrders([...orders].sort((a, b) => parseDateToMs(b.createdAt || b.date) - parseDateToMs(a.createdAt || a.date)).slice(0, 5));
           setCurrentOrders(orders.filter(isOpenOrder));
         }
       } catch {
@@ -711,7 +733,7 @@ const DashboardScreen = ({ navigation, route }) => {
           seen.add(uid);
           return true;
         });
-        setRecentOrders([...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
+        setRecentOrders([...orders].sort((a, b) => parseDateToMs(b.createdAt || b.date) - parseDateToMs(a.createdAt || a.date)).slice(0, 5));
         setCurrentOrders(orders.filter(isOpenOrder));
       }
 
@@ -1761,7 +1783,13 @@ const DashboardScreen = ({ navigation, route }) => {
                 <Text style={styles.sectionTitle}>Recent Orders</Text>
               </View>
               {recentOrders.length > 0 && (
-                <TouchableOpacity onPress={() => navigation.navigate('Requests')}>
+                <TouchableOpacity onPress={() => {
+                  if (navigation.getParent()) {
+                    navigation.getParent().navigate('Requests');
+                  } else {
+                    navigation.navigate('Requests');
+                  }
+                }}>
                   <Text style={styles.viewAllText}>View All →</Text>
                 </TouchableOpacity>
               )}
@@ -1784,7 +1812,7 @@ const DashboardScreen = ({ navigation, route }) => {
                 >
                   {recentOrders.map((order) => (
                     <TouchableOpacity
-                      key={String(order.id || order._id)}
+                      key={String(order.id || order._id || Math.random())}
                       style={styles.recentSliderCard}
                       activeOpacity={0.9} onPress={() => navigation.navigate('OrderDetails', { order })}
                     >
@@ -1798,7 +1826,7 @@ const DashboardScreen = ({ navigation, route }) => {
                           </View>
                         </View>
                         <Text style={styles.orderDate}>
-                          {new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {formatOrderDateSafe(order.createdAt || order.date)}
                         </Text>
                       </View>
                       <View style={styles.orderDetails}>

@@ -12,6 +12,64 @@ import { MOCK_ORDERS } from '../../services/mockData';
 import { ordersAPI } from '../../services/api';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
+const parseDateToMs = (dateVal) => {
+  if (!dateVal) return 0;
+  try {
+    if (typeof dateVal.toDate === 'function') return dateVal.toDate().getTime();
+    if (typeof dateVal === 'object') {
+      if (typeof dateVal.seconds === 'number') return dateVal.seconds * 1000;
+      if (typeof dateVal._seconds === 'number') return dateVal._seconds * 1000;
+    }
+    if (typeof dateVal === 'number') return dateVal > 1e11 ? dateVal : dateVal * 1000;
+    const d = new Date(dateVal);
+    return !isNaN(d.getTime()) ? d.getTime() : 0;
+  } catch (_) {
+    return 0;
+  }
+};
+
+const formatOrderDateSafe = (dateVal) => {
+  if (!dateVal) return 'Recently';
+  try {
+    if (typeof dateVal.toDate === 'function') {
+      return dateVal.toDate().toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+    if (typeof dateVal === 'object') {
+      if (typeof dateVal.seconds === 'number') {
+        return new Date(dateVal.seconds * 1000).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      if (typeof dateVal._seconds === 'number') {
+        return new Date(dateVal._seconds * 1000).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+    }
+    const d = new Date(dateVal);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+  } catch (_) {}
+  return 'Recently';
+};
+
 const RequestScreen = ({ navigation, route }) => {
   const [requests, setRequests] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,8 +102,8 @@ const RequestScreen = ({ navigation, route }) => {
     const storedRequests = await getData(ASYNC_STORAGE_KEYS.REQUESTS) || [];
     const combined = [...storedRequests, ...MOCK_ORDERS]
       .sort((a, b) => {
-        const da = new Date(a.createdAt || a.date || 0).getTime();
-        const db = new Date(b.createdAt || b.date || 0).getTime();
+        const da = parseDateToMs(a.createdAt || a.date);
+        const db = parseDateToMs(b.createdAt || b.date);
         return db - da;
       })
       .slice(0, 20);
@@ -161,12 +219,7 @@ const RequestScreen = ({ navigation, route }) => {
           </Text>
         )}
         <Text style={styles.orderDate}>
-          {new Date(item.createdAt || item.date).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}
+          {formatOrderDateSafe(item.createdAt || item.date)}
         </Text>
       </View>
 

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -332,12 +333,17 @@ const OrderDetailsScreen = ({ navigation, route }) => {
         (err) => console.log('Order snapshot listener error:', err)
       );
 
-    return () => unsubscribe();
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        try { unsubscribe(); } catch (_) {}
+      }
+    };
   }, [orderMongoId]);
 
   const statusLower = normalizeOrderStatus(order.rawStatus || order.status);
   const isPending = statusLower === 'pending';
-  const isCancellable = statusLower !== 'delivered' && statusLower !== 'completed' && statusLower !== 'cancelled';
+  const isDelivered = statusLower === 'delivered' || statusLower === 'completed';
+  const isCancellable = !isDelivered && statusLower !== 'cancelled';
   const isTracking = isTrackableStatus(order.rawStatus || order.status) || Boolean(order.riderId);
 
   useEffect(() => {
@@ -720,8 +726,6 @@ const OrderDetailsScreen = ({ navigation, route }) => {
         return etaProgress;
     }
   }, [statusLower, etaProgress]);
-
-  const isDelivered = statusLower === 'delivered' || statusLower === 'completed';
 
   const estimatedWindow = useMemo(() => {
     if (isPending || isDelivered) {

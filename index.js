@@ -9,6 +9,18 @@ const originalAlert = Alert.alert;
 AlertHelper.setOriginalAlert(originalAlert);
 Alert.alert = AlertHelper.alert;
 
+// Global Unhandled Error Handler
+// Prevents silent crashes and unexpected process terminations in production
+if (global.ErrorUtils) {
+  const defaultHandler = global.ErrorUtils.getGlobalHandler();
+  global.ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.warn('⚠️ Global JS Error caught:', error?.message || error);
+    if (__DEV__ && defaultHandler) {
+      defaultHandler(error, isFatal);
+    }
+  });
+}
+
 AppRegistry.registerComponent(appName, () => App);
 
 // Register background handler outside the app lifecycle so it can handle messages

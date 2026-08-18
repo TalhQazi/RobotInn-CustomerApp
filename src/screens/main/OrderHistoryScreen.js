@@ -27,7 +27,22 @@ function formatStatus(status) {
 function formatDate(iso) {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    if (typeof iso.toDate === 'function') {
+      return iso.toDate().toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+    if (typeof iso === 'object') {
+      if (typeof iso.seconds === 'number') {
+        return new Date(iso.seconds * 1000).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+      if (typeof iso._seconds === 'number') {
+        return new Date(iso._seconds * 1000).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+    }
+    const d = new Date(iso);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+    return '—';
   } catch {
     return '—';
   }
@@ -36,7 +51,22 @@ function formatDate(iso) {
 function formatTime(iso) {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (typeof iso.toDate === 'function') {
+      return iso.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    if (typeof iso === 'object') {
+      if (typeof iso.seconds === 'number') {
+        return new Date(iso.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      if (typeof iso._seconds === 'number') {
+        return new Date(iso._seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+    const d = new Date(iso);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return '';
   } catch {
     return '';
   }

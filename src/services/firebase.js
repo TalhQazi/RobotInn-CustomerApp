@@ -243,9 +243,6 @@ export const initializeFirebaseMessaging = async () => {
     // Set up foreground message handler
     setupForegroundMessageHandler();
 
-    // Set up background message handler
-    setupBackgroundMessageHandler();
-
     // Handle notification when app is opened from notification
     setupNotificationOpenedHandler();
 

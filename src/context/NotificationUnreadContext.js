@@ -12,24 +12,42 @@ export function NotificationUnreadProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    const user = auth().currentUser;
-    if (!user) {
-      setUnreadCount(0);
-      return;
-    }
+    let unsubscribe = null;
 
-    const unsubscribe = firestore()
-      .collection('notifications')
-      .where('userId', '==', user.uid)
-      .where('read', '==', false)
-      .onSnapshot(async (snapshot) => {
-        if (!snapshot) return;
-        setUnreadCount(snapshot.size);
-      }, (err) => {
-        console.error('Error listening to notifications:', err);
-      });
+    const unsubAuth = auth().onAuthStateChanged((user) => {
+      if (typeof unsubscribe === 'function') {
+        try { unsubscribe(); } catch (_) {}
+        unsubscribe = null;
+      }
 
-    return () => unsubscribe();
+      if (!user) {
+        setUnreadCount(0);
+        return;
+      }
+
+      unsubscribe = firestore()
+        .collection('notifications')
+        .where('userId', '==', user.uid)
+        .where('read', '==', false)
+        .onSnapshot(
+          (snapshot) => {
+            if (!snapshot) return;
+            setUnreadCount(snapshot.size);
+          },
+          (err) => {
+            console.warn('Notification unread count listener error:', err?.message || err);
+          }
+        );
+    });
+
+    return () => {
+      if (typeof unsubAuth === 'function') {
+        try { unsubAuth(); } catch (_) {}
+      }
+      if (typeof unsubscribe === 'function') {
+        try { unsubscribe(); } catch (_) {}
+      }
+    };
   }, []);
 
   const refreshUnreadCount = useCallback(async () => {
