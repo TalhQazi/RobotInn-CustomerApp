@@ -429,14 +429,24 @@ const DashboardScreen = ({ navigation, route }) => {
     }
   };
 
-  const handleDisputeAdjustment = (order) => {
-    setAdjustmentModalVisible(false);
-    setAdjustmentModalOrder(null);
-    showThemedAlert({
-      title: '⚠️ Amount Disputed',
-      message: 'Your dispute has been submitted. An admin will review the receipt and contact you shortly.',
-      buttons: [{ text: 'OK' }],
-    });
+  const handleDisputeAdjustment = async (order, { requestedPrice, reason } = {}) => {
+    try {
+      setAdjustmentSubmitting(true);
+      const orderId = order.id || order.orderId || order._id;
+      await ordersAPI.rejectPriceAdjustment(orderId, { requestedPrice, reason });
+      setAdjustmentModalVisible(false);
+      setAdjustmentModalOrder(null);
+      showThemedAlert({
+        title: '⚠️ Demand Sent to Admin',
+        message: `Your requested price of Rs ${requestedPrice || 0} has been sent to Admin for final review. Admin and you will finalize the price.`,
+        buttons: [{ text: 'OK' }],
+      });
+      fetchDashboardData();
+    } catch (err) {
+      showThemedAlert({ title: 'Error', message: err.message || 'Failed to submit price demand.' });
+    } finally {
+      setAdjustmentSubmitting(false);
+    }
   };
   const [cancellingOrderId, setCancellingOrderId] = useState(null);
 

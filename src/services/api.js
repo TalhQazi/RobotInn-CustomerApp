@@ -759,6 +759,52 @@ export const ordersAPI = {
     await firestore().collection('orders').doc(orderId).update(updateData);
     return { success: true, status: nextStatus };
   },
+
+  rejectPriceAdjustment: async (orderId, { requestedPrice, reason } = {}) => {
+    const updateData = {
+      status: ORDER_STATUS.ADJUSTMENT_PENDING,
+      billDispute: {
+        requestedPrice: Number(requestedPrice) || 0,
+        reason: reason || 'Customer requested lower price',
+        status: 'pending_admin_review',
+        submittedAt: new Date().toISOString(),
+      },
+      'adjustmentNegotiation.customerApproved': false,
+      'adjustmentNegotiation.customerDemandPrice': Number(requestedPrice) || 0,
+      'adjustmentNegotiation.customerDemandReason': reason || '',
+      'adjustmentNegotiation.status': 'disputed',
+      'adjustmentNegotiation.decisionTimestamp': new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await firestore().collection('orders').doc(orderId).update(updateData);
+
+    try {
+      const orderDoc = await firestore().collection('orders').doc(orderId).get();
+      const orderData = orderDoc.data() || {};
+      const orderCode = orderData.orderId || orderId.slice(-6);
+      const custName = orderData.customer?.name || orderData.customerName || 'Customer';
+
+      await firestore().collection('notifications').add({
+        recipient: 'admin',
+        title: '⚠️ Bill Dispute & Counter-Offer',
+        message: `Order #${orderCode}: ${custName} rejected bill and demanded Rs ${requestedPrice}. Reason: ${reason || 'Customer counter-offer'}`,
+        type: 'bill_dispute',
+        read: false,
+        createdAt: new Date().toISOString(),
+        data: {
+          orderId: orderId,
+          orderCode,
+          requestedPrice: Number(requestedPrice) || 0,
+          reason: reason || '',
+        },
+      });
+    } catch (notifErr) {
+      console.warn('Could not post dispute notification to admin:', notifErr);
+    }
+
+    return { success: true };
+  },
 };
 
 
