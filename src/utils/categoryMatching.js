@@ -4,17 +4,11 @@
 
 export const doesStoreMatchCategory = (store, targetCategory) => {
   if (!targetCategory) return true;
-  const targetRaw = String(targetCategory).toLowerCase().trim();
+  const cleanTarget = String(targetCategory || '')
+    .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, '')
+    .trim();
+  const targetRaw = cleanTarget.toLowerCase();
   if (!targetRaw || targetRaw === 'all' || targetRaw === 'other' || targetRaw === 'general') return true;
-
-  // Admin-curated stores are always shown — admin placed them there intentionally
-  if (typeof store === 'object' && store !== null && store.isAdminStore === true) return true;
-
-  // Stores with no type/category field should never be filtered out silently
-  if (typeof store === 'object' && store !== null) {
-    const hasType = store.type || store.category || store.categoryName || store.categoryId || store.supportedCategories;
-    if (!hasType) return true;
-  }
 
   const storeName = (typeof store === 'string' ? store : store?.name || '').toLowerCase().trim();
   const storeType = (typeof store === 'object' ? String(store?.type || store?.category || store?.categoryName || store?.categoryId || '').toLowerCase().trim() : '');
@@ -66,27 +60,33 @@ export const doesStoreMatchCategory = (store, targetCategory) => {
 
   // Keyword check on storeName
   const KEYWORDS_BY_CAT = {
-    pharmacy: ['chemist', 'pharmacy', 'medical', 'medicos', 'pharma', 'dr.', 'd.watson', 'watson', 'shaheen', 'servaid', 'shifa', 'health', 'disprin', 'panadol', 'brufen', 'medicine', 'metro pharmacy', 'city pharmacy'],
-    food: ['burger', 'pizza', 'kfc', 'mcdonald', 'subway', 'dunkin', 'cafe', 'restaurant', 'bakers', 'foods', 'grill', 'bbq', 'tikka', 'karahi', 'diner', 'eatery', 'fast food', 'cheezious', 'howdy', 'savour', 'tehzeeb', 'baskin'],
-    grocery: ['mart', 'supermarket', 'store', 'cash & carry', 'cash and carry', 'savemart', 'imtiaz', 'greenvalley', 'punjab cash', 'grocery', 'general store', 'carrefour', 'al-fatah'],
-    bakery: ['bakery', 'bakers', 'sweets', 'confectionery', 'patisserie', 'tehzeeb', 'rahat', 'layered', 'kitchen cuisine', 'gourmet'],
-    meat: ['meat', 'butcher', 'poultry', 'chicken', 'meat one', 'kausar'],
-    cosmetics: ['cosmetics', 'beauty', 'scentsation', 'saeed ghani', 'makeup', 'nivea', 'skincare', 'glamour'],
-    stationery: ['book', 'stationery', 'paper', 'books', 'saeed book', 'london book', 'copy'],
-    electronics: ['electronic', 'electronics', 'mobile', 'samsung', 'apple', 'mi', 'computer', 'tech', 'gadget'],
-    pet_supplies: ['pet', 'vet', 'animal', 'dog', 'cat', 'litter'],
-    dairy: ['dairy', 'milk', 'dahi', 'yogurt', 'butter', 'cheese', 'creamer'],
-    fruits: ['fruit', 'fruits', 'apple', 'banana', 'mango', 'orange', 'fruit shop'],
-    vegetables: ['vegetable', 'vegetables', 'veggie', 'sabzi', 'sabzi mandi', 'potato', 'onion', 'tomato'],
-    soft_drinks: ['drink', 'drinks', 'beverage', 'coke', 'pepsi', 'sprite', '7up', 'sting', 'redbull', 'soda'],
+    pharmacy: ['chemist', 'pharmacy', 'medical', 'medicos', 'pharma', 'dr.', 'd.watson', 'watson', 'shaheen', 'servaid', 'shifa', 'health', 'disprin', 'panadol', 'brufen', 'medicine', 'medicines', 'clinic', 'hospital', 'drug', 'drugs', 'care', 'surgical', 'metro pharmacy', 'city pharmacy'],
+    food: ['food', 'foods', 'restaurant', 'fast food', 'biryani', 'karahi', 'tikka', 'bbq', 'nihari', 'pulao', 'roll', 'shawarma', 'grill', 'eatery', 'diner', 'cafe', 'coffee', 'tea', 'burger', 'pizza', 'kfc', 'mcdonald', 'subway', 'dunkin', 'cheezious', 'howdy', 'savour', 'kabab', 'kebab', 'haleem', 'fish', 'broast', 'snack', 'paratha', 'chai', 'dhaba', 'kitchen', 'hotel', 'baskin', 'tehzeeb'],
+    grocery: ['mart', 'supermarket', 'store', 'cash & carry', 'cash and carry', 'savemart', 'imtiaz', 'greenvalley', 'punjab cash', 'grocery', 'general store', 'carrefour', 'al-fatah', 'karyana', 'provision', 'bazaar', 'super store', 'mini mart', 'wholesale', 'retail'],
+    bakery: ['bakery', 'bakers', 'sweets', 'confectionery', 'patisserie', 'tehzeeb', 'rahat', 'layered', 'kitchen cuisine', 'gourmet', 'bread', 'cake', 'cakes', 'pastry', 'nimco', 'sweet', 'mithai', 'halwa'],
+    meat: ['meat', 'butcher', 'poultry', 'chicken', 'meat one', 'kausar', 'mutton', 'beef', 'fish', 'prawn', 'al-makkah meat', 'al madina meat', 'gosht'],
+    cosmetics: ['cosmetics', 'beauty', 'scentsation', 'saeed ghani', 'makeup', 'nivea', 'skincare', 'glamour', 'perfume', 'fragrance', 'salon'],
+    stationery: ['book', 'stationery', 'paper', 'books', 'saeed book', 'london book', 'copy', 'book store', 'photocopy', 'pen'],
+    electronics: ['electronic', 'electronics', 'mobile', 'samsung', 'apple', 'mi', 'computer', 'tech', 'gadget', 'cellular', 'telecom'],
+    pet_supplies: ['pet', 'vet', 'animal', 'dog', 'cat', 'litter', 'birds', 'aquarium'],
+    dairy: ['dairy', 'milk', 'dahi', 'yogurt', 'butter', 'cheese', 'creamer', 'milk shop', 'fresh milk'],
+    fruits: ['fruit', 'fruits', 'apple', 'banana', 'mango', 'orange', 'fruit shop', 'fresh fruits'],
+    vegetables: ['vegetable', 'vegetables', 'veggie', 'sabzi', 'sabzi mandi', 'potato', 'onion', 'tomato', 'fresh veg'],
+    soft_drinks: ['drink', 'drinks', 'beverage', 'coke', 'pepsi', 'sprite', '7up', 'sting', 'redbull', 'soda', 'juice', 'shake'],
   };
 
   const keyList = targetCatKey ? (KEYWORDS_BY_CAT[targetCatKey] || []) : [];
   if (keyList.some(k => storeName.includes(k))) return true;
 
+  // Fallback: if store was specifically fetched for this category
+  if (store?.isGoogleStore || store?.isRealtime || store?.isBackendStore) {
+    if (!storeType || storeType === 'store' || storeType === 'general' || storeType.includes(targetCatKey) || targetCatKey.includes(storeType)) {
+      return true;
+    }
+  }
+
   // Fallback: if no storeType or store is a plain string, check substring match with targetRaw
   if (!storeType || storeType === 'store' || storeType === 'general') {
-    // If storeName is empty (e.g., plain object with no name), include it
     if (!storeName) return true;
     return storeName.includes(targetRaw) || targetRaw.includes(storeName);
   }

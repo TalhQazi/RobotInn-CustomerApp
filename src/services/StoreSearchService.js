@@ -50,11 +50,34 @@ class StoreSearchService {
     const userLng = parseFloat(userLocation.longitude || userLocation.lng || userLocation.lon || 0);
     const userArea = String(userLocation.area || '').toLowerCase().trim();
 
-    // ── Step 1: Filter stores by Supported Categories
+    // ── Step 1: Filter stores by Supported Categories AND selected area
     // Only return stores whose supportedCategories array contains ANY of the cart item categories.
     // If no specific category is provided (or category is 'other'), match all active stores.
+    // Area filtering: when userArea is specified, only include stores that either
+    //   (a) have store.allAreas === true (explicitly available everywhere), or
+    //   (b) have a store.area field that matches userArea (case-insensitive substring).
+    // Stores with a missing/empty area field are excluded when a target area is given,
+    // because we cannot confirm they belong to the selected area.
     const categoryMatchedStores = allStores.filter((store) => {
       if (store.status === 'inactive') return false;
+
+      // ── Area guard (surgical — only when caller provided a target area) ──────
+      if (userArea) {
+        if (store.allAreas === true) {
+          // Explicitly marked as available in all areas — allow through
+        } else {
+          const storeAreaLower = String(store.area || '').toLowerCase().trim();
+          if (!storeAreaLower) {
+            // No area field — cannot confirm it belongs to the selected area; exclude it.
+            return false;
+          }
+          const areaMatches =
+            storeAreaLower === userArea ||
+            storeAreaLower.includes(userArea) ||
+            userArea.includes(storeAreaLower);
+          if (!areaMatches) return false;
+        }
+      }
 
       if (targetCategoryIds.length === 0 || targetCategoryIds.includes('other')) {
         return true;
@@ -116,10 +139,17 @@ class StoreSearchService {
 
     for (const radiusStep of availableSteps) {
       activeRadius = radiusStep;
-      // If valid coordinates, filter by radiusStep; otherwise take top sorted stores
       if (userLat !== 0 && userLng !== 0) {
+        // Filter by driving/straight-line distance radius
         finalStores = storesWithDistance.filter((s) => s.distanceKm <= radiusStep);
+      } else if (userArea) {
+        // No GPS coordinates — use area-text match only (already applied in Step 1).
+        // Do NOT fall back to all stores, because that would include stores from other areas.
+        finalStores = [...storesWithDistance];
+        // Area is already enforced in Step 1; no further filtering needed here.
+        break; // All area-matched stores are already included; radius expansion is N/A without coords.
       } else {
+        // No area and no coordinates — allow all category-matched stores (legacy fallback).
         finalStores = [...storesWithDistance];
       }
 
@@ -128,8 +158,9 @@ class StoreSearchService {
       }
     }
 
-    // If still less than 10 and location coordinates were missing, fallback to top sorted stores
-    if (finalStores.length < TARGET_MIN_STORES && storesWithDistance.length > finalStores.length) {
+    // If still less than TARGET_MIN_STORES and GPS was missing, only expand to remaining
+    // area-matched stores — never to stores from outside the selected area.
+    if (finalStores.length < TARGET_MIN_STORES && storesWithDistance.length > finalStores.length && !userArea) {
       finalStores = storesWithDistance.slice(0, Math.max(TARGET_MIN_STORES, storesWithDistance.length));
     }
 

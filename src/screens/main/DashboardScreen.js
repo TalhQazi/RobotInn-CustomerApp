@@ -21,7 +21,7 @@ import {
   getOrderStatusLabel,
   isActiveOrderStatus,
 } from '../../utils/orderStatus';
-import { fetchNearbyStoresFromGoogle, AREA_COORDINATES, resolveAreaCoords, getFallbackStoresForAreaAndCategory } from '../../utils/maps';
+import { fetchNearbyStoresFromGoogle, AREA_COORDINATES, resolveAreaCoords, getFallbackStoresForAreaAndCategory, isStoreInTargetArea } from '../../utils/maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
@@ -478,12 +478,15 @@ const DashboardScreen = ({ navigation, route }) => {
   const handleCancelOrder = async (orderId) => {
     try {
       setCancellingOrderId(orderId);
-      const res = await ordersAPI.cancelOrder(orderId, 'Cancelled by customer');
+      const res = await ordersAPI.cancel(orderId, 'Cancelled by customer');
       if (res.success) {
+        // Optimistically remove from current orders & update recent orders status
+        setCurrentOrders(prev => prev.filter(o => o.id !== orderId && o.orderId !== orderId && o._id !== orderId));
+        setRecentOrders(prev => prev.map(o => (o.id === orderId || o.orderId === orderId || o._id === orderId) ? { ...o, status: 'cancelled' } : o));
         showThemedAlert({ title: 'Order Cancelled', message: 'Your order has been cancelled successfully.' });
         fetchDashboardData();
       } else {
-        showThemedAlert({ title: 'Error', message: res.error || 'Failed to cancel order.' });
+        showThemedAlert({ title: 'Error', message: res.error || res.message || 'Failed to cancel order.' });
       }
     } catch (err) {
       showThemedAlert({ title: 'Error', message: err.message || 'Error cancelling order.' });
@@ -774,10 +777,8 @@ const DashboardScreen = ({ navigation, route }) => {
 
     if (storePicker.visible && cleanCategory) {
       setLoadingGoogleStores(true);
-      
-      // Instant pre-population so user never sees 0 stores or loading lag
-      const initialFallback = getFallbackStoresForAreaAndCategory(activeArea, cleanCategory);
-      setGoogleStores(initialFallback);
+      setGoogleStores([]);
+      setBackendStores([]);
 
       // 1. Query Backend Database for stores in activeArea + cleanCategory
       storesAPI.getByAreaAndCategory(activeArea, cleanCategory)
@@ -800,15 +801,16 @@ const DashboardScreen = ({ navigation, route }) => {
 
       const areaCoords = resolveAreaCoords(activeArea);
 
-      // 2. Query Google Places & Overpass API for real stores in activeArea + cleanCategory
-      fetchNearbyStoresFromGoogle(cleanCategory, activeArea, addressCoords?.lat || areaCoords?.lat, addressCoords?.lng || areaCoords?.lng)
+      // 2. Query Google Places API (New) for real stores in activeArea + cleanCategory
+      fetchNearbyStoresFromGoogle(cleanCategory, activeArea, areaCoords?.lat, areaCoords?.lng)
         .then(results => {
-          if (!isCancelled && Array.isArray(results) && results.length > 0) {
-            setGoogleStores(results);
+          if (!isCancelled) {
+            setGoogleStores(Array.isArray(results) ? results : []);
           }
         })
         .catch(err => {
           console.warn('Google Places fetch error:', err);
+          if (!isCancelled) setGoogleStores([]);
         })
         .finally(() => {
           if (!isCancelled) setLoadingGoogleStores(false);
@@ -826,7 +828,16 @@ const DashboardScreen = ({ navigation, route }) => {
 
   const selectedAreaObj = React.useMemo(() => {
     if (!selectedArea || !areasData.length) return null;
-    return areasData.find(a => (a.name || '').toLowerCase() === selectedArea.toLowerCase());
+    const cleanTarget = selectedArea.trim().toLowerCase();
+    const targetNorm = cleanTarget.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return areasData.find(a => {
+      const aName = (a.name || a.id || '').trim().toLowerCase();
+      const aNorm = aName.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return aName === cleanTarget ||
+        aNorm === targetNorm ||
+        (targetNorm && aNorm.startsWith(targetNorm)) ||
+        (targetNorm && targetNorm.startsWith(aNorm));
+    });
   }, [areasData, selectedArea]);
 
   const combinedStoreList = React.useMemo(() => {
@@ -879,8 +890,12 @@ const DashboardScreen = ({ navigation, route }) => {
     // Combine all store sources: Admin Area stores + backend stores + Google Places
     const rawAll = [...adminAreaStores, ...backendList, ...googleList];
 
-    // Filter strictly by currentPickerCategory so ONLY stores belonging to the category are included
-    const categoryFiltered = rawAll.filter(s => doesStoreMatchCategory(s, currentPickerCategory));
+    // Filter strictly by currentPickerCategory AND selected sector/area
+    const targetAreaCoords = resolveAreaCoords(selectedArea);
+    const categoryFiltered = rawAll.filter(s =>
+      doesStoreMatchCategory(s, currentPickerCategory) &&
+      isStoreInTargetArea(s, selectedArea, targetAreaCoords)
+    );
 
     // Deduplicate by store name
     const uniqueMap = new Map();
@@ -905,7 +920,7 @@ const DashboardScreen = ({ navigation, route }) => {
       ...internationalList.map(s => ({ ...s, isInternational: true })),
       ...localList.map(s => ({ ...s, isInternational: false })),
     ];
-  }, [selectedAreaObj, googleStores, backendStores, storeSearch, selectedArea, currentPickerCategory]);
+  }, [selectedAreaObj, googleStores, backendStores, storeSearch, selectedArea, currentPickerCategory, addressCoords]);
 
   const selectArea = (area) => {
     setSelectedArea(area);
@@ -1268,23 +1283,31 @@ const DashboardScreen = ({ navigation, route }) => {
             >
               {categories.map((category) => {
                 const category_id = category.id || category._id || category.name;
+                const isActive = selectedCategoryId === category_id;
 
                 return (
                   <TouchableOpacity
                     key={category_id}
-                    style={styles.categoryCard}
-                    activeOpacity={0.8}
-                    onPress={() => navigation.navigate('StoreList', {
-                      categoryName: category.name,
-                      categoryId: category_id,
-                      areaName: selectedArea,
-                      userLocation: addressCoords ? { latitude: addressCoords.lat, longitude: addressCoords.lng, area: selectedArea } : { area: selectedArea },
-                    })}
+                    style={[
+                      styles.categoryCard,
+                      isActive && styles.categoryCardSelected,
+                    ]}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      // Toggle: tap same category again to deselect (show all)
+                      setSelectedCategoryId(isActive ? null : category_id);
+                    }}
                   >
-                    <View style={styles.categoryIconContainer}>
+                    <View style={[
+                      styles.categoryIconContainer,
+                      isActive && styles.categoryIconContainerSelected,
+                    ]}>
                       {renderCategoryIcon(category)}
                     </View>
-                    <Text style={styles.categoryNameText} numberOfLines={1}>
+                    <Text style={[
+                      styles.categoryNameText,
+                      isActive && styles.categoryNameTextSelected,
+                    ]} numberOfLines={1}>
                       {category.name}
                     </Text>
                   </TouchableOpacity>
@@ -1865,11 +1888,11 @@ const DashboardScreen = ({ navigation, route }) => {
               />
             </View>
 
-            {loadingGoogleStores && (
+            {loadingGoogleStores && combinedStoreList.length > 0 && (
               <View style={styles.googleLoadingBanner}>
                 <ActivityIndicator size="small" color="#2EC4B6" style={{ marginRight: 8 }} />
                 <Text style={styles.googleLoadingText}>
-                  Fetching nearby {currentPickerCategory} stores via Google Maps API...
+                  Fetching additional nearby {currentPickerCategory} stores...
                 </Text>
               </View>
             )}
@@ -1919,9 +1942,23 @@ const DashboardScreen = ({ navigation, route }) => {
                 );
               }}
               ListEmptyComponent={
-                <Text style={styles.emptyModalText}>
-                  No {currentPickerCategory} stores found for "{storeSearch}" in {selectedArea}
-                </Text>
+                loadingGoogleStores && combinedStoreList.length === 0 ? (
+                  <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color="#2EC4B6" />
+                    <Text style={[styles.emptyModalText, { marginTop: 12, color: '#718096' }]}>
+                      Finding {currentPickerCategory} stores in {selectedArea}...
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <Ionicons name="storefront-outline" size={42} color="#D1FAF5" style={{ marginBottom: 8 }} />
+                    <Text style={styles.emptyModalText}>
+                      {storeSearch
+                        ? `No stores matching "${storeSearch}" in this area`
+                        : 'This store is not available in this area.'}
+                    </Text>
+                  </View>
+                )
               }
             />
           </View>

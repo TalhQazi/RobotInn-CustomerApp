@@ -83,22 +83,31 @@ const SplashScreen = () => {
           if (firebaseUser) {
             try {
               const me = await authAPI.getMe();
+              const isBanned = me?.data?.isBanned === true || me?.data?.is_banned === true || me?.data?.status === 'banned';
               const userType = String(me?.data?.type || '').toLowerCase();
-              if (userType === 'customer') {
+              if (isBanned) {
+                goMain = false;
+                await authAPI.logout();
+              } else if (userType === 'customer') {
                 goMain = true;
               } else {
                 await authAPI.logout();
               }
-            } catch {
-              // getMe failed (e.g. Firestore profile not found) but Firebase user is valid
-              // Fall back to locally stored user data instead of logging out
-              const storedUser = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
-              const storedType = String(storedUser?.type || '').toLowerCase();
-              if (storedUser && storedType === 'customer') {
-                goMain = true;
+            } catch (err) {
+              if (err?.message?.includes('BANNED') || err?.isBanned) {
+                goMain = false;
+                await authAPI.logout();
               } else {
-                await removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
-                await removeData(ASYNC_STORAGE_KEYS.USER_DATA);
+                // getMe failed due to network/transient error
+                const storedUser = await getData(ASYNC_STORAGE_KEYS.USER_DATA);
+                const storedBanned = storedUser?.isBanned === true || storedUser?.is_banned === true || storedUser?.status === 'banned';
+                const storedType = String(storedUser?.type || '').toLowerCase();
+                if (storedUser && !storedBanned && storedType === 'customer') {
+                  goMain = true;
+                } else {
+                  await removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN);
+                  await removeData(ASYNC_STORAGE_KEYS.USER_DATA);
+                }
               }
             }
           } else {

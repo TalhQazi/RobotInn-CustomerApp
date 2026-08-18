@@ -314,82 +314,81 @@ export function resolveAreaCoords(areaName) {
 // ─── Store Fetch In-Memory Cache ──────────────────────────────────────────────
 const storeFetchCache = new Map();
 
-// ─── Google Places Nearby Search — category → Place type mapping ───────────────
-// Maps app category keywords to Google Places standard types.
-// Ref: https://developers.google.com/maps/documentation/places/web-service/supported_types
-const CATEGORY_GOOGLE_TYPES = {
-  'groceries':       ['grocery_or_supermarket', 'supermarket'],
-  'grocery':         ['grocery_or_supermarket', 'supermarket'],
-  'fresh bazaar':    ['grocery_or_supermarket', 'food'],
-  'freshbazaar':     ['grocery_or_supermarket'],
-  'meat':            ['grocery_or_supermarket', 'food'],
-  'pharmacy':        ['pharmacy'],
-  'health':          ['pharmacy', 'hospital'],
-  'medical':         ['pharmacy', 'hospital'],
-  'fruits':          ['grocery_or_supermarket'],
-  'fruit':           ['grocery_or_supermarket'],
-  'bakery':          ['bakery'],
-  'bakers':          ['bakery'],
-  'drink corners':   ['cafe', 'bar'],
-  'drink corner':    ['cafe'],
-  'drinks':          ['cafe', 'bar'],
-  'cosmetics':       ['beauty_salon', 'hair_care'],
-  'cosmetic':        ['beauty_salon'],
-  'stationery':      ['book_store'],
-  'restaurant':      ['restaurant'],
-  'food':            ['restaurant', 'meal_takeaway', 'cafe'],
-  'electronics':     ['electronics_store'],
-  'clothing':        ['clothing_store'],
-  'mart':            ['grocery_or_supermarket', 'supermarket'],
-  'marts':           ['grocery_or_supermarket', 'supermarket'],
-  'supermarket':     ['supermarket'],
-  'hardware':        ['hardware_store'],
-  'pet':             ['pet_store'],
-  'pets':            ['pet_store'],
-  'baby':            ['department_store'],
+// ─── Google Places Nearby Search — category search configuration ───────────────
+const CATEGORY_SEARCH_CONFIG = {
+  'groceries': { keyword: 'grocery supermarket store mart', type: 'supermarket' },
+  'grocery': { keyword: 'grocery supermarket store mart', type: 'supermarket' },
+  'fresh bazaar': { keyword: 'fresh bazaar fruit vegetable market grocery', type: null },
+  'freshbazaar': { keyword: 'fresh bazaar fruit vegetable market', type: null },
+  'meat': { keyword: 'meat butcher chicken poultry shop', type: null },
+  'pharmacy': { keyword: 'pharmacy medical chemist medicine store', type: 'pharmacy' },
+  'health': { keyword: 'pharmacy medical health hospital chemist', type: 'pharmacy' },
+  'medical': { keyword: 'pharmacy medical chemist clinic hospital', type: 'pharmacy' },
+  'fruits': { keyword: 'fruit fresh produce fruits market', type: null },
+  'fruit': { keyword: 'fruit fresh produce market', type: null },
+  'vegetables': { keyword: 'vegetables sabzi produce market', type: null },
+  'bakery': { keyword: 'bakery sweets cakes bread confectionery', type: 'bakery' },
+  'bakers': { keyword: 'bakery sweets cakes bread', type: 'bakery' },
+  'drink corners': { keyword: 'cafe juice shake beverages tea coffee drinks', type: 'cafe' },
+  'drink corner': { keyword: 'cafe juice beverages drinks tea coffee', type: 'cafe' },
+  'drinks': { keyword: 'cafe juice beverages cold drinks', type: 'cafe' },
+  'cosmetics': { keyword: 'cosmetics beauty makeup skincare store', type: null },
+  'cosmetic': { keyword: 'cosmetics beauty makeup store', type: null },
+  'stationery': { keyword: 'stationery books paper book shop', type: 'book_store' },
+  'restaurant': { keyword: 'restaurant fast food dining cafe', type: 'restaurant' },
+  'food': { keyword: 'restaurant fast food food cafe eatery', type: 'restaurant' },
+  'electronics': { keyword: 'electronics mobile phones computer gadgets', type: 'electronics_store' },
+  'clothing': { keyword: 'clothing fashion apparel garments boutique', type: 'clothing_store' },
+  'mart': { keyword: 'mart supermarket grocery cash and carry', type: 'supermarket' },
+  'marts': { keyword: 'mart supermarket grocery', type: 'supermarket' },
+  'supermarket': { keyword: 'supermarket hypermarket cash carry', type: 'supermarket' },
+  'hardware': { keyword: 'hardware tools sanitary paints store', type: 'hardware_store' },
+  'pet': { keyword: 'pet care animal shop pet supplies', type: 'pet_store' },
+  'pets': { keyword: 'pet care animal supplies food', type: 'pet_store' },
+  'baby': { keyword: 'baby garments toys care shop', type: null },
+  'dairy': { keyword: 'dairy milk yogurt butter sweets', type: null },
 };
 
-/** Resolves an app category name to the best single Google Places type string. */
-function getGooglePlacesTypeForCategory(categoryName) {
+function getSearchConfigForCategory(categoryName) {
   const lower = (categoryName || '').toLowerCase().trim();
-  if (CATEGORY_GOOGLE_TYPES[lower]) return CATEGORY_GOOGLE_TYPES[lower][0];
-  for (const [key, types] of Object.entries(CATEGORY_GOOGLE_TYPES)) {
-    if (lower.includes(key) || key.includes(lower)) return types[0];
+  if (CATEGORY_SEARCH_CONFIG[lower]) return CATEGORY_SEARCH_CONFIG[lower];
+  for (const [key, cfg] of Object.entries(CATEGORY_SEARCH_CONFIG)) {
+    if (lower.includes(key) || key.includes(lower)) return cfg;
   }
-  return 'establishment';
+  return { keyword: lower || 'store', type: null };
 }
 
 // ─── Overpass API store tags for each category ────────────────────────────────
 const CATEGORY_OSM_TAGS = {
-  'groceries':       [['shop', 'supermarket'], ['shop', 'convenience'], ['shop', 'grocery'], ['shop', 'department_store']],
-  'grocery':         [['shop', 'supermarket'], ['shop', 'convenience'], ['shop', 'grocery']],
-  'fresh bazaar':    [['shop', 'greengrocer'], ['shop', 'farm'], ['amenity', 'marketplace'], ['shop', 'fruit']],
-  'freshbazaar':     [['shop', 'greengrocer'], ['amenity', 'marketplace']],
-  'meat':            [['shop', 'butcher'], ['shop', 'meat'], ['shop', 'supermarket']],
-  'pharmacy':        [['amenity', 'pharmacy'], ['shop', 'chemist'], ['shop', 'medical_supply'], ['healthcare', 'pharmacy']],
-  'health':          [['amenity', 'pharmacy'], ['shop', 'chemist'], ['amenity', 'clinic'], ['amenity', 'hospital'], ['shop', 'medical_supply']],
-  'medical':         [['amenity', 'pharmacy'], ['shop', 'chemist'], ['amenity', 'clinic'], ['shop', 'medical_supply']],
-  'fruits':          [['shop', 'greengrocer'], ['shop', 'fruit']],
-  'fruit':           [['shop', 'greengrocer'], ['shop', 'fruit']],
-  'bakery':          [['shop', 'bakery'], ['shop', 'pastry'], ['shop', 'confectionery']],
-  'bakers':          [['shop', 'bakery'], ['shop', 'confectionery']],
-  'drink corners':   [['amenity', 'cafe'], ['amenity', 'juice_bar'], ['shop', 'beverages']],
-  'drink corner':    [['amenity', 'cafe'], ['shop', 'beverages']],
-  'drinks':          [['amenity', 'cafe'], ['shop', 'beverages'], ['amenity', 'juice_bar']],
-  'cosmetics':       [['shop', 'cosmetics'], ['shop', 'beauty'], ['shop', 'perfumery']],
-  'cosmetic':        [['shop', 'cosmetics'], ['shop', 'beauty']],
-  'stationery':      [['shop', 'stationery'], ['shop', 'books']],
-  'restaurant':      [['amenity', 'restaurant'], ['amenity', 'fast_food']],
-  'food':            [['amenity', 'restaurant'], ['amenity', 'fast_food'], ['amenity', 'cafe'], ['shop', 'bakery']],
-  'electronics':     [['shop', 'electronics'], ['shop', 'computer'], ['shop', 'mobile_phone']],
-  'clothing':        [['shop', 'clothes'], ['shop', 'fashion'], ['shop', 'boutique']],
-  'mart':            [['shop', 'supermarket'], ['shop', 'convenience']],
-  'marts':           [['shop', 'supermarket'], ['shop', 'convenience']],
-  'supermarket':     [['shop', 'supermarket'], ['shop', 'convenience']],
-  'hardware':        [['shop', 'hardware'], ['shop', 'doityourself']],
-  'pet':             [['shop', 'pet']],
-  'pets':            [['shop', 'pet']],
-  'baby':            [['shop', 'baby_goods']],
+  'groceries': [['shop', 'supermarket'], ['shop', 'convenience'], ['shop', 'grocery'], ['shop', 'department_store']],
+  'grocery': [['shop', 'supermarket'], ['shop', 'convenience'], ['shop', 'grocery']],
+  'fresh bazaar': [['shop', 'greengrocer'], ['shop', 'farm'], ['amenity', 'marketplace'], ['shop', 'fruit']],
+  'freshbazaar': [['shop', 'greengrocer'], ['amenity', 'marketplace']],
+  'meat': [['shop', 'butcher'], ['shop', 'meat'], ['shop', 'supermarket']],
+  'pharmacy': [['amenity', 'pharmacy'], ['shop', 'chemist'], ['shop', 'medical_supply'], ['healthcare', 'pharmacy']],
+  'health': [['amenity', 'pharmacy'], ['shop', 'chemist'], ['amenity', 'clinic'], ['amenity', 'hospital'], ['shop', 'medical_supply']],
+  'medical': [['amenity', 'pharmacy'], ['shop', 'chemist'], ['amenity', 'clinic'], ['shop', 'medical_supply']],
+  'fruits': [['shop', 'greengrocer'], ['shop', 'fruit']],
+  'fruit': [['shop', 'greengrocer'], ['shop', 'fruit']],
+  'bakery': [['shop', 'bakery'], ['shop', 'pastry'], ['shop', 'confectionery']],
+  'bakers': [['shop', 'bakery'], ['shop', 'confectionery']],
+  'drink corners': [['amenity', 'cafe'], ['amenity', 'juice_bar'], ['shop', 'beverages']],
+  'drink corner': [['amenity', 'cafe'], ['shop', 'beverages']],
+  'drinks': [['amenity', 'cafe'], ['shop', 'beverages'], ['amenity', 'juice_bar']],
+  'cosmetics': [['shop', 'cosmetics'], ['shop', 'beauty'], ['shop', 'perfumery']],
+  'cosmetic': [['shop', 'cosmetics'], ['shop', 'beauty']],
+  'stationery': [['shop', 'stationery'], ['shop', 'books']],
+  'restaurant': [['amenity', 'restaurant'], ['amenity', 'fast_food']],
+  'food': [['amenity', 'restaurant'], ['amenity', 'fast_food'], ['amenity', 'cafe'], ['shop', 'bakery']],
+  'electronics': [['shop', 'electronics'], ['shop', 'computer'], ['shop', 'mobile_phone']],
+  'clothing': [['shop', 'clothes'], ['shop', 'fashion'], ['shop', 'boutique']],
+  'mart': [['shop', 'supermarket'], ['shop', 'convenience']],
+  'marts': [['shop', 'supermarket'], ['shop', 'convenience']],
+  'supermarket': [['shop', 'supermarket'], ['shop', 'convenience']],
+  'hardware': [['shop', 'hardware'], ['shop', 'doityourself']],
+  'pet': [['shop', 'pet']],
+  'pets': [['shop', 'pet']],
+  'baby': [['shop', 'baby_goods']],
 };
 
 function getOsmTagsForCategory(categoryName) {
@@ -501,6 +500,7 @@ const GENERAL_BRAND_STORES_BY_CATEGORY = {
 export function getFallbackStoresForAreaAndCategory(areaName = '', categoryName = '') {
   const cleanArea = String(areaName || 'Islamabad').trim();
   const catKey = String(categoryName || 'food').toLowerCase().trim();
+  const areaCoords = resolveAreaCoords(cleanArea) || { lat: 33.6844, lng: 73.0479 };
 
   let targetCatKey = 'food';
   if (catKey.includes('pharma') || catKey.includes('health') || catKey.includes('medical') || catKey.includes('chemist') || catKey.includes('medicine')) {
@@ -534,53 +534,170 @@ export function getFallbackStoresForAreaAndCategory(areaName = '', categoryName 
   return baseList.map((item, idx) => ({
     place_id: `fallback_${cleanArea.toLowerCase()}_${targetCatKey}_${idx}`,
     placeId: `fallback_${cleanArea.toLowerCase()}_${targetCatKey}_${idx}`,
-    name: item.name.includes(cleanArea) ? item.name : `${item.name} ${cleanArea}`,
+    name: item.name.includes(cleanArea) ? item.name : `${item.name} (${cleanArea})`,
     address: `${cleanArea}, Islamabad`,
     rating: item.rating,
     type: targetCatKey,
     category: targetCatKey,
     categoryName: targetCatKey,
+    lat: areaCoords.lat,
+    lng: areaCoords.lng,
     isGoogleStore: true,
     isFallbackStore: true,
     isInternational: item.isInternational,
   }));
 }
 
-// ─── Normalise a single Google Places result into the common store shape ───────
+// ─── List of distinct sector/area tokens to detect cross-sector pollution ────
+export const ALL_SECTORS = [
+  'F-5', 'F-6', 'F-7', 'F-8', 'F-9', 'F-10', 'F-11', 'F-12',
+  'G-5', 'G-6', 'G-7', 'G-8', 'G-9', 'G-10', 'G-11', 'G-12', 'G-13', 'G-14', 'G-15',
+  'I-8', 'I-9', 'I-10', 'I-11', 'I-12', 'I-14',
+  'E-7', 'E-8', 'E-9', 'E-11',
+  'H-8', 'H-9', 'H-10', 'H-11', 'H-12',
+  'Blue Area', 'Centaurus', 'PWD', 'Pakistan Town', 'Korang Town', 'Soan Garden',
+  'Gulberg', 'DHA Phase 1', 'DHA Phase 2', 'DHA Phase 3', 'DHA Phase 4', 'DHA Phase 5',
+  'Bahria Phase 1', 'Bahria Phase 2', 'Bahria Phase 3', 'Bahria Phase 4', 'Bahria Phase 5',
+  'Bahria Phase 6', 'Bahria Phase 7', 'Bahria Phase 8', 'Bahria Enclave',
+  'Saddar', 'Commercial Market', 'Satellite Town', 'Chaklala', 'Westridge', 'Raja Bazar'
+];
+
+export const SECTOR_ALIASES = {
+  'F-6': ['f-6', 'f6', 'super market', 'kohsar', 'f 6', 'f-6 markaz'],
+  'F-7': ['f-7', 'f7', 'jinnah super', 'gol market', 'f 7', 'f-7 markaz'],
+  'F-8': ['f-8', 'f8', 'ayub market', 'f 8', 'f-8 markaz'],
+  'F-10': ['f-10', 'f10', 'tariq market', 'f 10', 'f-10 markaz'],
+  'F-11': ['f-11', 'f11', 'f 11', 'f-11 markaz'],
+  'G-6': ['g-6', 'g6', 'melody', 'aabpara', 'g 6', 'g-6 markaz'],
+  'G-7': ['g-7', 'g7', 'sitara market', 'g 7', 'g-7 markaz'],
+  'G-8': ['g-8', 'g8', 'i&t centre', 'i&t center', 'g 8', 'g-8 markaz'],
+  'G-9': ['g-9', 'g9', 'karachi company', 'g 9', 'g-9 markaz'],
+  'G-10': ['g-10', 'g10', 'g 10', 'g-10 markaz'],
+  'G-11': ['g-11', 'g11', 'g 11', 'g-11 markaz'],
+  'G-13': ['g-13', 'g13', 'g 13', 'g-13 markaz'],
+  'I-8': ['i-8', 'i8', 'habib market', 'i 8', 'i-8 markaz'],
+  'I-9': ['i-9', 'i9', 'i 9', 'i-9 markaz'],
+  'I-10': ['i-10', 'i10', 'i 10', 'i-10 markaz'],
+  'E-7': ['e-7', 'e7', 'e 7', 'e-7 markaz'],
+  'E-11': ['e-11', 'e11', 'mpchs', 'fechs', 'e 11'],
+  'Blue Area': ['blue area', 'jinnah avenue', 'fazl-e-haq'],
+};
+
+/**
+ * Validates if a store strictly belongs to the requested target area/sector.
+ * Prevents cross-sector pollution (e.g. stores from F-7 or G-6 showing when F-6 is chosen).
+ */
+export function isStoreInTargetArea(store, targetArea = '', targetCoords = null) {
+  if (!targetArea || targetArea.toLowerCase() === 'islamabad' || targetArea.toLowerCase() === 'rawalpindi') {
+    return true;
+  }
+
+  // Admin stores explicitly tied to the selected area document belong to it
+  if (store?.isAdminStore) {
+    return true;
+  }
+
+  const cleanTarget = String(targetArea).trim();
+  const targetLower = cleanTarget.toLowerCase();
+  const targetNorm = cleanTarget.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  // If store has explicit area property, check that first
+  if (store?.area) {
+    const storeAreaNorm = String(store.area).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (storeAreaNorm === targetNorm || storeAreaNorm.includes(targetNorm) || targetNorm.includes(storeAreaNorm)) {
+      return true;
+    }
+  }
+
+  const storeName = String(store?.name || '').toLowerCase();
+  const storeAddress = String(store?.address || store?.vicinity || '').toLowerCase();
+  const fullText = `${storeName} ${storeAddress}`;
+
+  // 1. Check known aliases for this target sector/area
+  let targetAliases = [targetLower, targetNorm.toLowerCase()];
+  for (const [secKey, aliases] of Object.entries(SECTOR_ALIASES)) {
+    const secNorm = secKey.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (targetNorm === secNorm || targetLower.includes(secKey.toLowerCase())) {
+      targetAliases = [...targetAliases, ...aliases];
+      break;
+    }
+  }
+
+  const hasTargetMention = targetAliases.some(alias => fullText.includes(alias));
+
+  // 2. Check if the store explicitly mentions another conflicting sector or commercial hub
+  if (targetNorm !== 'BLUEAREA' && targetNorm !== 'CENTAURUS') {
+    if (storeName.includes('beverly centre') || storeName.includes('blue area') || storeName.includes('centaurus') || storeAddress.includes('blue area') || storeAddress.includes('centaurus')) {
+      return false;
+    }
+  }
+
+  for (const otherSec of ALL_SECTORS) {
+    const otherNorm = otherSec.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (otherNorm === targetNorm) continue; // Same sector, skip
+
+    const otherLower = otherSec.toLowerCase();
+    const otherNoHyphen = otherLower.replace(/[^a-z0-9]/g, '');
+    const otherSpace = otherLower.replace('-', ' ');
+
+    const regex = new RegExp(`\\b(${otherLower}|${otherNoHyphen}|${otherSpace})\\b`, 'i');
+    if (regex.test(fullText)) {
+      if (!hasTargetMention) {
+        return false;
+      }
+    }
+  }
+
+  // 3. If it explicitly mentions target sector, accept it
+  if (hasTargetMention) {
+    return true;
+  }
+
+  // 4. Geographical distance check strictly as secondary verification
+  const storeLat = store?.lat || store?.latitude;
+  const storeLng = store?.lng || store?.longitude;
+  const tLat = targetCoords?.lat || resolveAreaCoords(cleanTarget)?.lat;
+  const tLng = targetCoords?.lng || resolveAreaCoords(cleanTarget)?.lng;
+
+  if (storeLat && storeLng && tLat && tLng) {
+    const dist = haversineKm(tLat, tLng, Number(storeLat), Number(storeLng));
+    const isSector = /^[E-Ie-i]-?[0-9]+/i.test(targetNorm);
+    const maxRadiusKm = isSector ? 1.4 : 2.5;
+    if (dist <= maxRadiusKm) {
+      return true;
+    }
+    return false;
+  }
+
+  return false;
+}
+
+// ─── Normalise a single Google Places (New) result into the common store shape ──
 function normalizeGooglePlaceResult(place, cleanCatName, cleanArea) {
-  const loc = place.geometry?.location;
-  const vicinity = place.vicinity || place.formatted_address || `${cleanArea}, Pakistan`;
+  const loc = place.location;
+  const vicinity = place.formattedAddress || `${cleanArea}, Islamabad`;
+  const types = Array.isArray(place.types) ? place.types : [];
   return {
-    place_id: place.place_id,
-    placeId: place.place_id,
-    name: place.name,
+    place_id: place.id,
+    placeId: place.id,
+    name: place.displayName?.text || place.name || 'Store',
     address: vicinity,
     rating: place.rating != null ? String(place.rating) : '4.5',
-    userRatingsTotal: place.user_ratings_total || 0,
+    userRatingsTotal: place.userRatingCount || 0,
     type: cleanCatName || 'Store',
     category: cleanCatName || 'Store',
-    isOpen: place.opening_hours?.open_now ?? null,
-    lat: loc?.lat ?? null,
-    lng: loc?.lng ?? null,
+    types: types,
+    supportedCategories: types,
+    isOpen: place.currentOpeningHours?.openNow ?? null,
+    lat: loc?.latitude ?? null,
+    lng: loc?.longitude ?? null,
     isGoogleStore: true,
-    isRealtime: true,       // distinguishes live Places results from fallbacks
+    isRealtime: true,
     isFallbackStore: false,
-    photoRef: place.photos?.[0]?.photo_reference ?? null,
   };
 }
 
-/**
- * Fetches real-time nearby stores for the given category and area using a
- * three-tier strategy:
- *
- *   Tier 1 — Google Places Nearby Search API  (radius = 5 km)  ← primary
- *   Tier 2 — Overpass OSM                     (radius = 8 km)  ← secondary fallback
- *   Tier 3 — Curated brand list per category                    ← last resort
- *
- * All three tiers emit the same object shape so callers (DashboardScreen,
- * StoreListScreen) work transparently without any code changes.
- */
-export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName = '', lat = null, lng = null) {
+export async function fetchNearbyStoresFromGoogle(category = 'Food', areaName = '', lat = null, lng = null) {
   // Strip emoji / non-printable characters from category string
   const cleanCatName = (typeof category === 'object' && category !== null
     ? category.name || category.title
@@ -589,9 +706,6 @@ export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName 
     .trim();
   const cleanArea = String(areaName || 'Islamabad').trim();
   const cacheKey = `${cleanCatName.toLowerCase()}_${cleanArea.toLowerCase()}`;
-
-  // Pre-compute brand fallbacks — always available regardless of network
-  const fallbackStores = getFallbackStoresForAreaAndCategory(cleanArea, cleanCatName);
 
   // Return cached results if already populated
   if (storeFetchCache.has(cacheKey) && storeFetchCache.get(cacheKey).length > 0) {
@@ -602,9 +716,10 @@ export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName 
   let targetLat = lat;
   let targetLng = lng;
 
-  if (!targetLat || !targetLng) {
-    const coords = resolveAreaCoords(cleanArea);
-    if (coords) { targetLat = coords.lat; targetLng = coords.lng; }
+  const resolved = resolveAreaCoords(cleanArea);
+  if (resolved) {
+    targetLat = resolved.lat;
+    targetLng = resolved.lng;
   }
   if (!targetLat || !targetLng) {
     // Default to Islamabad city centre
@@ -612,133 +727,121 @@ export async function fetchNearbyStoresFromGoogle(category = 'Health', areaName 
     targetLng = 73.0479;
   }
 
-  // ── TIER 1: Google Places Nearby Search API ────────────────────────────────
+  const cleanAreaNorm = cleanArea.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const isSector = /^[E-Ie-i]-?[0-9]+/i.test(cleanAreaNorm);
+  const radius = isSector ? 1500 : 3000;
+
+  const searchCfg = getSearchConfigForCategory(cleanCatName);
+  const query = `${searchCfg.keyword || cleanCatName} in ${cleanArea} Islamabad`;
+
+  // ── Google Places API (New) SearchText ───────────────────────────────────────
   try {
-    const placeType = getGooglePlacesTypeForCategory(cleanCatName);
-    const radius = 5000; // 5 km as specified
-
-    const placesUrl =
-      `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
-      `?location=${targetLat},${targetLng}` +
-      `&radius=${radius}` +
-      `&type=${encodeURIComponent(placeType)}` +
-      `&keyword=${encodeURIComponent(cleanCatName)}` +
-      `&key=${GOOGLE_MAPS_API_KEY}`;
-
+    const placesUrl = 'https://places.googleapis.com/v1/places:searchText';
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-    const response = await fetch(placesUrl, { signal: controller.signal });
+    const response = await fetch(placesUrl, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask':
+          'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.types,places.location,places.currentOpeningHours',
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        maxResultCount: 20,
+        locationBias: {
+          circle: {
+            center: { latitude: targetLat, longitude: targetLng },
+            radius: radius,
+          },
+        },
+      }),
+    });
     clearTimeout(timeoutId);
 
     if (response.ok) {
       const json = await response.json();
 
-      if (json.status === 'OK' && Array.isArray(json.results) && json.results.length > 0) {
-        // Deduplicate by name. Seed with brand fallbacks (lowest priority) so
-        // well-known chains always appear; live Places results overwrite them.
+      if (Array.isArray(json.places) && json.places.length > 0) {
         const storeMap = new Map();
-        fallbackStores.forEach(s => storeMap.set(s.name.toLowerCase().trim(), s));
-
-        json.results.forEach(place => {
-          if (!place.name) return;
+        json.places.forEach(place => {
+          if (!place.displayName?.text) return;
           const normalized = normalizeGooglePlaceResult(place, cleanCatName, cleanArea);
-          storeMap.set(normalized.name.toLowerCase().trim(), normalized);
+          if (isStoreInTargetArea(normalized, cleanArea, { lat: targetLat, lng: targetLng })) {
+            storeMap.set(normalized.name.toLowerCase().trim(), normalized);
+          }
         });
 
         const finalResults = Array.from(storeMap.values());
-        storeFetchCache.set(cacheKey, finalResults);
-        console.log(`[GooglePlaces] ${finalResults.length} stores — "${cleanCatName}" near "${cleanArea}"`);
-        return finalResults;
+        if (finalResults.length > 0) {
+          storeFetchCache.set(cacheKey, finalResults);
+          return finalResults;
+        }
       }
-
-      console.warn(`[GooglePlaces] status="${json.status}" — falling back to Overpass`);
-    } else {
-      console.warn(`[GooglePlaces] HTTP ${response.status} — falling back to Overpass`);
     }
   } catch (gErr) {
-    console.warn('[GooglePlaces] Nearby Search failed:', gErr?.message);
+    console.warn('[GooglePlaces] SearchText failed:', gErr?.message);
   }
 
-  // ── TIER 2: Overpass OSM fallback ─────────────────────────────────────────
+  // ── Fallback to SearchNearby (Places API New) ───────────────────────────────
   try {
-    const osmTags = getOsmTagsForCategory(cleanCatName);
-    const radiusMeters = 8000;
+    const nearbyUrl = 'https://places.googleapis.com/v1/places:searchNearby';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-    // Use nwr (node, way, relation) to cover points, building polygons & area relations
-    const tagFilters = osmTags
-      .map(([k, v]) => `nwr["${k}"="${v}"](around:${radiusMeters},${targetLat},${targetLng});`)
-      .join('\n');
+    const body = {
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: { latitude: targetLat, longitude: targetLng },
+          radius: radius,
+        },
+      },
+    };
+    if (searchCfg.type) {
+      body.includedTypes = [searchCfg.type];
+    }
 
-    const overpassQuery = `[out:json][timeout:8];(\n${tagFilters}\n);out body center;`;
+    const response = await fetch(nearbyUrl, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask':
+          'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.types,places.location,places.currentOpeningHours',
+      },
+      body: JSON.stringify(body),
+    });
+    clearTimeout(timeoutId);
 
-    const endpoints = [
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter',
-      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-    ];
-
-    let data = null;
-    for (const ep of endpoints) {
-      try {
-        const overpassUrl = `${ep}?data=${encodeURIComponent(overpassQuery)}`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-        const res = await fetch(overpassUrl, {
-          signal: controller.signal,
-          headers: { 'User-Agent': 'RobotInn-CustomerApp/1.0' },
+    if (response.ok) {
+      const json = await response.json();
+      if (Array.isArray(json.places) && json.places.length > 0) {
+        const storeMap = new Map();
+        json.places.forEach(place => {
+          if (!place.displayName?.text) return;
+          const normalized = normalizeGooglePlaceResult(place, cleanCatName, cleanArea);
+          if (isStoreInTargetArea(normalized, cleanArea, { lat: targetLat, lng: targetLng })) {
+            storeMap.set(normalized.name.toLowerCase().trim(), normalized);
+          }
         });
-        clearTimeout(timeoutId);
 
-        if (res.ok) {
-          data = await res.json();
-          if (data?.elements?.length > 0) break;
+        const finalResults = Array.from(storeMap.values());
+        if (finalResults.length > 0) {
+          storeFetchCache.set(cacheKey, finalResults);
+          return finalResults;
         }
-      } catch (epErr) {
-        console.warn(`[Overpass] ${ep} failed:`, epErr?.message);
       }
     }
-
-    const elements = data?.elements || [];
-    const storeMap = new Map();
-    // Seed with brand fallbacks
-    fallbackStores.forEach(s => storeMap.set(s.name.toLowerCase().trim(), s));
-
-    for (const el of elements) {
-      const name = el.tags?.name || el.tags?.['name:en'] || el.tags?.['name:ur'];
-      if (!name) continue;
-
-      const elLat = el.lat || el.center?.lat;
-      const elLng = el.lon || el.center?.lon;
-      const address = [
-        el.tags?.['addr:street'],
-        el.tags?.['addr:housenumber'],
-        el.tags?.['addr:suburb'] || cleanArea,
-      ].filter(Boolean).join(', ') || `${cleanArea}, Islamabad`;
-
-      storeMap.set(name.toLowerCase().trim(), {
-        place_id: `osm_${el.type}_${el.id}`,
-        placeId: `osm_${el.type}_${el.id}`,
-        name,
-        address,
-        rating: el.tags?.stars ? Number(el.tags.stars).toFixed(1) : '4.6',
-        type: cleanCatName || 'Store',
-        lat: elLat,
-        lng: elLng,
-        isGoogleStore: true,
-        isRealtime: false,
-        isFallbackStore: false,
-      });
-    }
-
-    const finalResults = Array.from(storeMap.values());
-    storeFetchCache.set(cacheKey, finalResults);
-    return finalResults;
-  } catch (err) {
-    console.warn('[StoreFetch] Overpass error:', err?.message || err);
+  } catch (nErr) {
+    console.warn('[GooglePlaces] SearchNearby failed:', nErr?.message);
   }
-  // ── TIER 3: Curated brand / static fallback ────────────────────────────────
-  storeFetchCache.set(cacheKey, fallbackStores);
-  return fallbackStores;
+
+  // If no store exists in the selected area, return empty array immediately (no fake dummy stores)
+  return [];
 }
+

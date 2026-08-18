@@ -7,6 +7,7 @@ export const ASYNC_STORAGE_KEYS = {
   CUSTOM_FOOD_MENU: 'custom_food_menu',
   MESSAGES: 'messages',
   ADDRESSES: 'addresses',
+  GOOGLE_ACCOUNTS: 'google_accounts',
 };
 
 // Order lifecycle lives in one place now — see utils/orderStatus.js, which is

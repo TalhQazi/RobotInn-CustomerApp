@@ -5,6 +5,8 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { getData, storeData, removeData } from '../storage/asyncStorage';
 import { ASYNC_STORAGE_KEYS } from '../utils/constants';
 import { ORDER_STATUS, isBillVisibleToCustomer } from '../utils/orderStatus';
+import { doesStoreMatchCategory } from '../utils/categoryMatching';
+import { isStoreInTargetArea } from '../utils/maps';
 
 const checkExists = (snap) => {
   if (!snap) return false;
@@ -116,15 +118,97 @@ export const authAPI = {
     return { success: true, user: profile, token: firebaseUser.uid };
   },
 
+  checkEmailBanStatus: async (email) => {
+    if (!email) return { isBanned: false, banReason: '' };
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const querySnap = await firestore()
+        .collection('users')
+        .where('email', '==', cleanEmail)
+        .get();
+      if (!querySnap.empty) {
+        for (const doc of querySnap.docs) {
+          const data = doc.data();
+          const isBanned =
+            data?.isBanned === true ||
+            data?.is_banned === true ||
+            data?.status === 'banned';
+          if (isBanned) {
+            return {
+              isBanned: true,
+              banReason:
+                data?.banReason ||
+                data?.ban_reason ||
+                'Your account has been suspended by an administrator.',
+            };
+          }
+        }
+      }
+      return { isBanned: false, banReason: '' };
+    } catch (err) {
+      console.warn('checkEmailBanStatus warning:', err);
+      return { isBanned: false, banReason: '' };
+    }
+  },
+
+  getKnownGoogleAccounts: async () => {
+    try {
+      const stored = await getData(ASYNC_STORAGE_KEYS.GOOGLE_ACCOUNTS);
+      const accounts = Array.isArray(stored) ? stored : [];
+      const updated = await Promise.all(
+        accounts.map(async (acc) => {
+          if (!acc?.email) return acc;
+          const status = await authAPI.checkEmailBanStatus(acc.email);
+          return {
+            ...acc,
+            isBanned: status.isBanned,
+            banReason: status.banReason,
+          };
+        })
+      );
+      await storeData(ASYNC_STORAGE_KEYS.GOOGLE_ACCOUNTS, updated);
+      return updated;
+    } catch (e) {
+      console.warn('getKnownGoogleAccounts error:', e);
+      return [];
+    }
+  },
+
+  saveKnownGoogleAccount: async (account) => {
+    if (!account || !account.email) return;
+    try {
+      const email = account.email.trim().toLowerCase();
+      const stored = await getData(ASYNC_STORAGE_KEYS.GOOGLE_ACCOUNTS);
+      const accounts = Array.isArray(stored) ? stored : [];
+      const filtered = accounts.filter(
+        (a) => a?.email && a.email.trim().toLowerCase() !== email
+      );
+      const updated = [
+        {
+          email,
+          name: account.name || account.displayName || email.split('@')[0],
+          photo: account.photo || account.photoUrl || account.avatar || null,
+          id: account.id || null,
+          isBanned: !!account.isBanned,
+          banReason: account.banReason || '',
+          lastUsed: new Date().toISOString(),
+        },
+        ...filtered,
+      ].slice(0, 5);
+      await storeData(ASYNC_STORAGE_KEYS.GOOGLE_ACCOUNTS, updated);
+      return updated;
+    } catch (e) {
+      console.warn('saveKnownGoogleAccount error:', e);
+    }
+  },
+
   login: async (email, password) => {
     const userCredential = await auth().signInWithEmailAndPassword(email, password);
     const firebaseUser = userCredential.user;
     
-    // Fetch profile details
     const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
-
+    let profile;
     if (!checkExists(userSnap)) {
-      // Create a default profile if not exists
       const defaultProfile = {
         id: firebaseUser.uid,
         uid: firebaseUser.uid,
@@ -136,18 +220,48 @@ export const authAPI = {
         createdAt: new Date().toISOString()
       };
       await firestore().collection('users').doc(firebaseUser.uid).set(defaultProfile);
-      
-      await Promise.all([
-        storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
-        storeData(ASYNC_STORAGE_KEYS.USER_DATA, defaultProfile)
-      ]);
-      return { success: true, token: firebaseUser.uid, user: defaultProfile };
+      profile = defaultProfile;
+    } else {
+      profile = userSnap.data();
     }
 
-    const profile = userSnap.data();
+    // ── Ban gate: check direct doc AND email matches across users collection ──
+    let isBanned =
+      profile.isBanned === true ||
+      profile.is_banned === true ||
+      profile.status === 'banned';
+    let reason =
+      profile.banReason ||
+      profile.ban_reason ||
+      '';
+
+    if (!isBanned && (firebaseUser.email || email)) {
+      const emailCheck = await authAPI.checkEmailBanStatus(firebaseUser.email || email);
+      if (emailCheck.isBanned) {
+        isBanned = true;
+        reason = emailCheck.banReason;
+      }
+    }
+
+    if (isBanned) {
+      await auth().signOut();
+      try {
+        await GoogleSignin.signOut();
+      } catch (_) {}
+      await Promise.all([
+        removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN),
+        removeData(ASYNC_STORAGE_KEYS.USER_DATA),
+      ]);
+      const banReason = reason || 'Your account has been suspended by an administrator. Please contact support.';
+      const banErr = new Error(`BANNED:${banReason}`);
+      banErr.isBanned = true;
+      banErr.banReason = banReason;
+      throw banErr;
+    }
+
     // Unified auth: allow any user to log into CustomerApp
     // If they don't have 'customer' in their types yet, add it
-    const currentTypes = profile.types || [profile.type];
+    const currentTypes = profile.types || [profile.type || 'customer'];
     if (!currentTypes.includes('customer')) {
       currentTypes.push('customer');
       await firestore().collection('users').doc(firebaseUser.uid).update({ types: currentTypes });
@@ -156,13 +270,10 @@ export const authAPI = {
     profile.type = 'customer';
     profile.types = currentTypes;
 
-    // ── Unban fix: if the backend reports the user is NOT banned, strip any
-    // stale ban flags from the local profile before persisting it so a
-    // previously-banned-then-unbanned user is never stuck on the ban screen.
-    if (!profile.isBanned && !profile.is_banned) {
-      delete profile.isBanned;
-      delete profile.is_banned;
-    }
+    delete profile.isBanned;
+    delete profile.is_banned;
+    delete profile.banReason;
+    delete profile.ban_reason;
     
     await Promise.all([
       storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
@@ -189,26 +300,28 @@ export const authAPI = {
     ]);
   },
 
-  signInWithGoogle: async () => {
+  signInWithGoogle: async (options = {}) => {
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-      // ── Account-chooser fix: sign out of any cached Google session first so
-      // the account picker is always shown instead of silently reusing the last
-      // signed-in account.
-      try {
-        await GoogleSignin.signOut();
-      } catch (signOutErr) {
-        // Non-fatal — proceed even if no session was cached
-        console.warn('GoogleSignin pre-signOut warning:', signOutErr);
+      // ── Account-chooser: sign out of cached Google session first if not targeting a specific account
+      if (!options?.accountName) {
+        try {
+          await GoogleSignin.signOut();
+        } catch (signOutErr) {
+          console.warn('GoogleSignin pre-signOut warning:', signOutErr);
+        }
       }
 
-      const signInResult = await GoogleSignin.signIn();
+      const signInResult = await GoogleSignin.signIn(options);
       
       const idToken = signInResult.data ? signInResult.data.idToken : signInResult.idToken;
       if (!idToken) {
         throw new Error('Failed to obtain Google ID Token.');
       }
+
+      const googleUser = signInResult.data?.user || signInResult.user || {};
+      const selectedEmail = (googleUser.email || '').trim().toLowerCase();
 
       const googleCredential = GoogleAuthProvider.credential(idToken);
       const userCredential = await auth().signInWithCredential(googleCredential);
@@ -220,8 +333,8 @@ export const authAPI = {
         profile = {
           id: firebaseUser.uid,
           uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          name: firebaseUser.displayName || 'Customer',
+          email: firebaseUser.email || selectedEmail,
+          name: firebaseUser.displayName || googleUser.name || 'Customer',
           phone: firebaseUser.phoneNumber || '',
           type: 'customer',
           types: ['customer'],
@@ -233,6 +346,61 @@ export const authAPI = {
         profile = userSnap.data();
       }
 
+      // ── Ban gate: strictly check if user is banned by Admin (doc ID or email) ──
+      let isBanned =
+        profile.isBanned === true ||
+        profile.is_banned === true ||
+        profile.status === 'banned';
+      let reason =
+        profile.banReason ||
+        profile.ban_reason ||
+        '';
+
+      if (!isBanned && selectedEmail) {
+        const emailCheck = await authAPI.checkEmailBanStatus(selectedEmail);
+        if (emailCheck.isBanned) {
+          isBanned = true;
+          reason = emailCheck.banReason;
+        }
+      }
+
+      if (isBanned) {
+        const banReason = reason || 'Your account has been suspended by an administrator. Please contact support.';
+        
+        // Save to known device accounts so the Account Chooser UI shows it as banned
+        await authAPI.saveKnownGoogleAccount({
+          email: selectedEmail || firebaseUser.email,
+          name: googleUser.name || firebaseUser.displayName || 'Customer',
+          photo: googleUser.photo || firebaseUser.photoURL,
+          isBanned: true,
+          banReason,
+        });
+
+        await auth().signOut();
+        try {
+          await GoogleSignin.signOut();
+        } catch (_) {}
+        await Promise.all([
+          removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN),
+          removeData(ASYNC_STORAGE_KEYS.USER_DATA),
+        ]);
+
+        const banErr = new Error(`BANNED:${banReason}`);
+        banErr.isBanned = true;
+        banErr.banReason = banReason;
+        banErr.email = selectedEmail || firebaseUser.email;
+        throw banErr;
+      }
+
+      // Record successful Google account on device
+      await authAPI.saveKnownGoogleAccount({
+        email: selectedEmail || firebaseUser.email,
+        name: googleUser.name || firebaseUser.displayName || 'Customer',
+        photo: googleUser.photo || firebaseUser.photoURL,
+        isBanned: false,
+        banReason: '',
+      });
+
       const currentTypes = profile.types || [profile.type || 'customer'];
       if (!currentTypes.includes('customer')) {
         currentTypes.push('customer');
@@ -241,12 +409,10 @@ export const authAPI = {
       profile.type = 'customer';
       profile.types = currentTypes;
 
-      // ── Unban fix: clear stale local ban flags if the server profile shows
-      // the user is not banned, preventing a cached ban from blocking access.
-      if (!profile.isBanned && !profile.is_banned) {
-        delete profile.isBanned;
-        delete profile.is_banned;
-      }
+      delete profile.isBanned;
+      delete profile.is_banned;
+      delete profile.banReason;
+      delete profile.ban_reason;
 
       await Promise.all([
         storeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN, firebaseUser.uid),
@@ -267,11 +433,48 @@ export const authAPI = {
     const userSnap = await firestore().collection('users').doc(firebaseUser.uid).get();
     const profile = userSnap.data();
     if (profile) {
+      let isBanned =
+        profile.isBanned === true ||
+        profile.is_banned === true ||
+        profile.status === 'banned';
+      let reason =
+        profile.banReason ||
+        profile.ban_reason ||
+        '';
+
+      if (!isBanned && (firebaseUser.email || profile.email)) {
+        const emailCheck = await authAPI.checkEmailBanStatus(firebaseUser.email || profile.email);
+        if (emailCheck.isBanned) {
+          isBanned = true;
+          reason = emailCheck.banReason;
+        }
+      }
+
+      if (isBanned) {
+        await auth().signOut();
+        try {
+          await GoogleSignin.signOut();
+        } catch (_) {}
+        await Promise.all([
+          removeData(ASYNC_STORAGE_KEYS.AUTH_TOKEN),
+          removeData(ASYNC_STORAGE_KEYS.USER_DATA),
+        ]);
+        const banReason = reason || 'Your account has been suspended by an administrator. Please contact support.';
+        const banErr = new Error(`BANNED:${banReason}`);
+        banErr.isBanned = true;
+        banErr.banReason = banReason;
+        throw banErr;
+      }
+
       const currentTypes = profile.types || [profile.type || 'customer'];
       if (currentTypes.includes('customer')) {
         profile.type = 'customer';
       }
       profile.types = currentTypes;
+      delete profile.isBanned;
+      delete profile.is_banned;
+      delete profile.banReason;
+      delete profile.ban_reason;
     }
     return { success: true, data: profile, user: profile };
   },
@@ -488,12 +691,47 @@ export const ordersAPI = {
     return { success: true, data: { id: orderSnap.id, ...orderSnap.data() } };
   },
 
-  cancel: async (id) => {
-    await firestore().collection('orders').doc(id).update({
+  cancel: async (id, reason = 'Cancelled by customer') => {
+    if (!id) throw new Error('Order ID is required');
+
+    const updatePayload = {
       status: 'cancelled',
+      cancellationReason: reason,
+      cancelledAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
-    });
+    };
+
+    // 1. Try direct doc ID check and update
+    try {
+      const orderDocRef = firestore().collection('orders').doc(id);
+      const orderDoc = await orderDocRef.get();
+      if (checkExists(orderDoc)) {
+        await orderDocRef.update(updatePayload);
+        return { success: true };
+      }
+    } catch (docErr) {
+      console.warn('Direct doc update check failed, trying orderId query:', docErr?.message);
+    }
+
+    // 2. If doc does not exist by ID, search by custom 'orderId' field (e.g. ORD-123456)
+    try {
+      const querySnap = await firestore().collection('orders').where('orderId', '==', id).limit(1).get();
+      if (!querySnap.empty) {
+        const matchedDoc = querySnap.docs[0];
+        await matchedDoc.ref.update(updatePayload);
+        return { success: true };
+      }
+    } catch (queryErr) {
+      console.warn('Query by orderId failed:', queryErr?.message);
+    }
+
+    // 3. Fallback direct update
+    await firestore().collection('orders').doc(id).update(updatePayload);
     return { success: true };
+  },
+
+  cancelOrder: async (id, reason) => {
+    return await ordersAPI.cancel(id, reason);
   },
 
   // ── Price adjustment ───────────────────────────────────────────────────────
@@ -803,71 +1041,42 @@ export const storesAPI = {
   getByAreaAndCategory: async (areaName, categoryIdOrName, categoryName) => {
     try {
       const data = [];
-      const primaryCatStr = categoryIdOrName ? String(categoryIdOrName).toLowerCase().trim() : '';
-      const secondaryCatStr = categoryName ? String(categoryName).toLowerCase().trim() : primaryCatStr;
-      const targetArea = areaName ? String(areaName).toLowerCase().trim() : '';
+      const primaryCat = categoryIdOrName || categoryName || '';
+      const targetArea = areaName ? String(areaName).trim() : '';
 
-      const checkCategoryMatch = (sCat, sCatId) => {
-        // If no specific category requested or category is general/all/food/other, return true for all stores in area
-        if (!primaryCatStr || primaryCatStr === 'all' || primaryCatStr === 'general' || primaryCatStr === 'other') return true;
-
-        if (sCatId && (sCatId === primaryCatStr || sCatId === secondaryCatStr)) return true;
-
-        // If store has no category attribute, don't filter it out so no store is missing
-        if (!sCat) return true;
-
-        if (sCat === primaryCatStr || sCat === secondaryCatStr) return true;
-
-        // Broad category matching for pharmacy/health/medical
-        if (primaryCatStr.includes('pharma') || primaryCatStr.includes('health') || primaryCatStr.includes('medical') || primaryCatStr.includes('chemist') || primaryCatStr.includes('medicine')) {
-          if (sCat.includes('pharma') || sCat.includes('health') || sCat.includes('medical') || sCat.includes('chemist') || sCat.includes('medicine') || sCat.includes('drug')) {
-            return true;
-          }
-        }
-
-        // Broad category matching for food/restaurants/bakery
-        if (primaryCatStr.includes('food') || primaryCatStr.includes('restaurant') || primaryCatStr.includes('fast')) {
-          if (sCat.includes('food') || sCat.includes('restaurant') || sCat.includes('fast') || sCat.includes('cafe') || sCat.includes('bakery') || sCat.includes('pizza') || sCat.includes('burger')) {
-            return true;
-          }
-        }
-
-        if (sCat.includes(primaryCatStr) || primaryCatStr.includes(sCat)) return true;
-        if (secondaryCatStr && (sCat.includes(secondaryCatStr) || secondaryCatStr.includes(sCat))) return true;
-
-        return false;
-      };
-
-      // 1. Query 'areas' collection in Firestore (Admin Panel saves stores inside area documents!)
+      // 1. Query 'areas' collection in Firestore (Admin Panel saves stores inside area documents)
       try {
         const areasSnap = await firestore().collection('areas').get();
         areasSnap.forEach(doc => {
           const areaData = doc.data();
-          const areaNameStr = areaData.name ? String(areaData.name).toLowerCase().trim() : '';
-          const areaIdStr = doc.id ? String(doc.id).toLowerCase().trim() : '';
+          const areaNameStr = areaData.name ? String(areaData.name).trim() : '';
+          const areaIdStr = doc.id ? String(doc.id).trim() : '';
 
-          const areaMatches = !targetArea || areaNameStr === targetArea || areaIdStr === targetArea || areaNameStr.includes(targetArea) || targetArea.includes(areaNameStr);
+          const areaMatches = !targetArea ||
+            areaNameStr.toLowerCase() === targetArea.toLowerCase() ||
+            areaIdStr.toLowerCase() === targetArea.toLowerCase();
 
           if (areaMatches && Array.isArray(areaData.stores)) {
             areaData.stores.forEach((store, idx) => {
               if (store.active === false) return;
-              const storeName = typeof store === 'string' ? store : (store.name || '');
-              const sType = (typeof store === 'object' && store.type) ? String(store.type).toLowerCase() : '';
-              const sCat = (typeof store === 'object' && store.category) ? String(store.category).toLowerCase() : sType;
-              const sCatId = (typeof store === 'object' && (store.category_id || store.categoryId)) ? String(store.category_id || store.categoryId).toLowerCase() : '';
+              const storeObj = typeof store === 'string'
+                ? { name: store, type: categoryName || 'Store' }
+                : store;
+              const storeName = storeObj.name || '';
+              if (!storeName.trim()) return;
 
-              if (checkCategoryMatch(sCat, sCatId)) {
+              if (doesStoreMatchCategory(storeObj, primaryCat)) {
                 const storeNameKey = storeName.trim().toLowerCase();
-                if (storeNameKey && !data.some(e => (e.name || '').trim().toLowerCase() === storeNameKey)) {
+                if (!data.some(e => (e.name || '').trim().toLowerCase() === storeNameKey)) {
                   data.push({
-                    id: (typeof store === 'object' && store.id) ? store.id : `area_store_${doc.id}_${idx}`,
+                    id: storeObj.id || `area_store_${doc.id}_${idx}`,
                     name: storeName,
-                    type: (typeof store === 'object' && store.type) ? store.type : (categoryName || 'Store'),
+                    type: storeObj.type || categoryName || 'Store',
                     address: `${areaData.name || areaName}, ${areaData.city || 'Islamabad'}`,
-                    rating: (typeof store === 'object' && store.rating) ? store.rating : '4.8',
+                    rating: storeObj.rating || '4.8',
                     isBackendStore: true,
                     isAdminStore: true,
-                    ...(typeof store === 'object' ? store : {})
+                    ...storeObj
                   });
                 }
               }
@@ -884,14 +1093,14 @@ export const storesAPI = {
         storesSnap.forEach(doc => {
           const store = doc.data();
           if (store.active === false) return;
-          const storeArea = store.area ? String(store.area).toLowerCase().trim() : '';
+          const storeArea = store.area ? String(store.area).trim() : '';
 
-          const areaMatches = !targetArea || !storeArea || storeArea === targetArea || storeArea.includes(targetArea) || targetArea.includes(storeArea);
+          // Strictly match area
+          const areaMatches = !targetArea ||
+            store.allAreas === true ||
+            (storeArea && storeArea.toLowerCase() === targetArea.toLowerCase());
 
-          const sCat = store.category ? String(store.category).toLowerCase() : (store.type ? String(store.type).toLowerCase() : '');
-          const sCatId = store.category_id || store.categoryId ? String(store.category_id || store.categoryId).toLowerCase() : '';
-
-          if (areaMatches && checkCategoryMatch(sCat, sCatId)) {
+          if (areaMatches && doesStoreMatchCategory(store, primaryCat)) {
             const storeName = store.name || store.storeName || '';
             const storeNameKey = storeName.trim().toLowerCase();
             if (storeNameKey && !data.some(e => (e.name || '').trim().toLowerCase() === storeNameKey)) {

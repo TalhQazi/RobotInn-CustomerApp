@@ -11,7 +11,7 @@ import {
   StatusBar,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { fetchNearbyStoresFromGoogle } from '../../utils/maps';
+import { fetchNearbyStoresFromGoogle, isStoreInTargetArea } from '../../utils/maps';
 import StoreSearchService from '../../services/StoreSearchService';
 import { doesStoreMatchCategory } from '../../utils/categoryMatching';
 
@@ -35,35 +35,61 @@ const StoreListScreen = ({ navigation, route }) => {
     setLoading(true);
     setError(null);
     try {
-      // Step 1: Use StoreSearchService for dynamic category store matching & radius expansion
-      const searchRes = await StoreSearchService.searchStores({
-        categories: [categoryId || categoryName].filter(Boolean),
-        userLocation: userLocation || { area: areaName },
-        initialRadiusKm: 3,
-      });
-
-      const googleResults = await fetchNearbyStoresFromGoogle(categoryName, areaName);
-      const rawCombined = [...(searchRes.stores || []), ...(googleResults || [])];
-
-      const uniqueMap = new Map();
-      rawCombined.forEach(s => {
-        if (s.name && s.name.trim()) {
-          const k = s.name.toLowerCase().trim();
-          if (!uniqueMap.has(k)) uniqueMap.set(k, s);
-        }
-      });
-
       const targetCat = categoryName || categoryId;
-      const finalStores = Array.from(uniqueMap.values()).filter(s =>
-        doesStoreMatchCategory(s, targetCat)
+
+      // Step 1: Load initial backend & admin stores immediately (instant)
+      const searchRes = await StoreSearchService.searchStores({
+        categories: [targetCat].filter(Boolean),
+        userLocation: {
+          ...(userLocation || {}),
+          area: areaName,
+        },
+        initialRadiusKm: 1.5,
+      });
+
+      const initialStores = (searchRes.stores || []).filter(s =>
+        doesStoreMatchCategory(s, targetCat) &&
+        isStoreInTargetArea(s, areaName, userLocation)
       );
-      setStores(finalStores);
-      setSearchMeta({ searchedRadiusKm: searchRes.searchedRadiusKm || 8, totalMatches: finalStores.length });
+
+      setStores(initialStores);
+      setSearchMeta({ searchedRadiusKm: searchRes.searchedRadiusKm || 1.5, totalMatches: initialStores.length });
+      setLoading(false);
+
+      // Step 2: Fetch Google Places in parallel in the background
+      fetchNearbyStoresFromGoogle(
+        targetCat,
+        areaName,
+        userLocation?.latitude || userLocation?.lat,
+        userLocation?.longitude || userLocation?.lng
+      )
+        .then(googleResults => {
+          if (Array.isArray(googleResults) && googleResults.length > 0) {
+            setStores(prev => {
+              const combined = [...prev, ...googleResults];
+              const uniqueMap = new Map();
+              combined.forEach(s => {
+                if (s.name && s.name.trim()) {
+                  const k = s.name.toLowerCase().trim();
+                  if (!uniqueMap.has(k)) uniqueMap.set(k, s);
+                }
+              });
+              const merged = Array.from(uniqueMap.values()).filter(s =>
+                doesStoreMatchCategory(s, targetCat) &&
+                isStoreInTargetArea(s, areaName, userLocation)
+              );
+              setSearchMeta(m => ({ ...m, totalMatches: merged.length }));
+              return merged;
+            });
+          }
+        })
+        .catch(gErr => {
+          console.warn('[StoreListScreen] Google fetch background error:', gErr?.message);
+        });
     } catch (err) {
       console.warn('[StoreListScreen] fetch error:', err?.message);
       setError('Could not load stores. Please check your connection.');
       setStores([]);
-    } finally {
       setLoading(false);
     }
   }, [categoryName, categoryId, areaName, userLocation]);
@@ -201,11 +227,15 @@ const StoreListScreen = ({ navigation, route }) => {
       ) : filtered.length === 0 ? (
         <View style={styles.centered}>
           <Ionicons name="storefront-outline" size={56} color="#D1FAF5" />
-          <Text style={styles.emptyTitle}>No stores found</Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={styles.emptyTitle}>
             {searchText
-              ? 'No stores match your search'
-              : 'No ' + categoryName + ' stores found in ' + areaName}
+              ? `No stores match "${searchText}" in ${areaName || 'this area'}`
+              : 'This store is not available in this area.'}
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            {!searchText && areaName
+              ? `No ${categoryName || 'matching'} stores are available in ${areaName}.`
+              : null}
           </Text>
           <TouchableOpacity style={styles.skipFullBtn} onPress={handleSkip}>
             <Text style={styles.skipFullBtnText}>Continue without selecting a store</Text>

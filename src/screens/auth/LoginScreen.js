@@ -38,6 +38,9 @@ const LoginScreen = ({ navigation }) => {
     type: 'success', // 'success' or 'error'
     onConfirm: () => {},
   });
+  const [googleAccountsList, setGoogleAccountsList] = useState([]);
+  const [googleModalVisible, setGoogleModalVisible] = useState(false);
+  const [checkingAccounts, setCheckingAccounts] = useState(false);
 
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -137,6 +140,18 @@ const LoginScreen = ({ navigation }) => {
     } catch (err) {
       setLoading(false);
       
+      if (err.message && err.message.startsWith('BANNED:')) {
+        const banReason = err.message.replace('BANNED:', '').trim() || 'Your account has been suspended by an administrator.';
+        setAlertConfig({
+          title: 'Account Suspended',
+          message: banReason,
+          type: 'error',
+          onConfirm: () => setAlertVisible(false),
+        });
+        setAlertVisible(true);
+        return;
+      }
+
       // Format user-friendly error message
       let errorMessage = 'Unable to login. Please try again.';
       
@@ -173,12 +188,48 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLoginPress = async () => {
+    setError(null);
+    setCheckingAccounts(true);
+    try {
+      const knownAccounts = await authAPI.getKnownGoogleAccounts();
+      setCheckingAccounts(false);
+      if (knownAccounts && knownAccounts.length > 0) {
+        setGoogleAccountsList(knownAccounts);
+        setGoogleModalVisible(true);
+      } else {
+        await executeGoogleSignIn();
+      }
+    } catch (e) {
+      setCheckingAccounts(false);
+      await executeGoogleSignIn();
+    }
+  };
+
+  const handleSelectGoogleAccount = (account) => {
+    if (account.isBanned) {
+      const banReason = account.banReason || 'Account suspended by administrator.';
+      setAlertConfig({
+        title: 'Account Suspended',
+        message: `This Google account (${account.email}) is currently banned.\n\nReason: ${banReason}\n\nPlease choose a different account or contact support.`,
+        type: 'error',
+        onConfirm: () => setAlertVisible(false),
+      });
+      setAlertVisible(true);
+      return;
+    }
+
+    setGoogleModalVisible(false);
+    executeGoogleSignIn({ accountName: account.email });
+  };
+
+  const executeGoogleSignIn = async (options = {}) => {
+    setGoogleModalVisible(false);
     setError(null);
     setLoading(true);
 
     try {
-      const response = await authAPI.signInWithGoogle();
+      const response = await authAPI.signInWithGoogle(options);
       setLoading(false);
 
       const userType = String(response.user?.type || '').toLowerCase();
@@ -219,6 +270,28 @@ const LoginScreen = ({ navigation }) => {
     } catch (err) {
       setLoading(false);
       console.warn('Google login error:', err);
+
+      if (err.message && err.message.startsWith('BANNED:')) {
+        const banReason = err.message.replace('BANNED:', '').trim() || 'Your account has been suspended by an administrator.';
+        
+        // Refresh local known accounts list so the badge reflects Banned
+        authAPI.getKnownGoogleAccounts().then(accs => setGoogleAccountsList(accs)).catch(() => {});
+
+        setAlertConfig({
+          title: 'Account Suspended',
+          message: `${err.email ? `Account (${err.email}) is suspended.\n\n` : ''}Reason: ${banReason}`,
+          type: 'error',
+          onConfirm: () => setAlertVisible(false),
+        });
+        setAlertVisible(true);
+        return;
+      }
+
+      // If user cancelled Google picker, do not display an error popup
+      if (err.code === 'SIGN_IN_CANCELLED' || err.message?.includes('cancelled') || err.message?.includes('SIGN_IN_CANCELLED')) {
+        return;
+      }
+
       let errorMessage = 'Google login failed. Please try again.';
       if (err.message) {
         errorMessage = err.message;
@@ -353,12 +426,14 @@ const LoginScreen = ({ navigation }) => {
 
                 <TouchableOpacity 
                   style={styles.googleButton} 
-                  onPress={handleGoogleLogin}
+                  onPress={handleGoogleLoginPress}
                   activeOpacity={0.85}
-                  disabled={loading}
+                  disabled={loading || checkingAccounts}
                 >
                   <Icon name="logo-google" size={20} color="#EA4335" style={styles.googleIcon} />
-                  <Text style={styles.googleButtonText}>Continue with Google</Text>
+                  <Text style={styles.googleButtonText}>
+                    {checkingAccounts ? 'Opening Google...' : 'Continue with Google'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -373,6 +448,102 @@ const LoginScreen = ({ navigation }) => {
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Google Account Chooser Modal */}
+      <Modal
+        visible={googleModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setGoogleModalVisible(false)}
+      >
+        <View style={styles.googleModalOverlay}>
+          <View style={styles.googleModalContent}>
+            {/* Header */}
+            <View style={styles.googleModalHeader}>
+              <Icon name="logo-google" size={24} color="#EA4335" style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.googleModalTitle}>Choose an account</Text>
+                <Text style={styles.googleModalSubtitle}>to continue to RobotInn Customer</Text>
+              </View>
+            </View>
+
+            <View style={styles.googleAccountDivider} />
+
+            {/* List of Accounts */}
+            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+              {googleAccountsList.map((acc, index) => {
+                const initials = (acc.name || acc.email || 'U').substring(0, 1).toUpperCase();
+                return (
+                  <TouchableOpacity
+                    key={acc.email || index}
+                    style={[
+                      styles.googleAccountRow,
+                      acc.isBanned && styles.googleAccountRowBanned,
+                    ]}
+                    onPress={() => handleSelectGoogleAccount(acc)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.avatarCircle, acc.isBanned ? styles.avatarCircleBanned : styles.avatarCircleNormal]}>
+                      <Text style={[styles.avatarText, acc.isBanned && { color: '#DC2626' }]}>{initials}</Text>
+                    </View>
+
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.googleAccountName, acc.isBanned && { color: '#991B1B' }]} numberOfLines={1}>
+                        {acc.name || 'Google User'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+                        <Text style={[styles.googleAccountEmail, acc.isBanned && { color: '#DC2626' }]} numberOfLines={1}>
+                          {acc.email}
+                        </Text>
+                        {acc.isBanned ? (
+                          <View style={styles.bannedBadge}>
+                            <Text style={styles.bannedBadgeText}>Banned</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      {acc.isBanned && acc.banReason ? (
+                        <Text style={styles.bannedReasonPreview} numberOfLines={1}>
+                          Reason: {acc.banReason}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    <Icon
+                      name={acc.isBanned ? 'ban-outline' : 'chevron-forward'}
+                      size={18}
+                      color={acc.isBanned ? '#DC2626' : '#94A3B8'}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* Use another account row */}
+              <TouchableOpacity
+                style={styles.googleAccountRow}
+                onPress={() => executeGoogleSignIn()}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.avatarCircle, { backgroundColor: '#F1F5F9' }]}>
+                  <Icon name="person-add-outline" size={18} color="#475569" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[styles.googleAccountName, { color: COLORS.primary }]}>
+                    Use another account
+                  </Text>
+                </View>
+                <Icon name="chevron-forward" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.googleModalCancelButton}
+              onPress={() => setGoogleModalVisible(false)}
+            >
+              <Text style={styles.googleModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Custom Styled Alert Modal */}
       <Modal
@@ -397,7 +568,7 @@ const LoginScreen = ({ navigation }) => {
               onPress={alertConfig.onConfirm}
             >
               <Text style={styles.alertButtonText}>
-                {alertConfig.type === 'success' ? 'Continue' : 'Try Again'}
+                {alertConfig.type === 'success' ? 'Continue' : 'OK'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -628,6 +799,122 @@ const styles = StyleSheet.create({
     color: '#2D3748',
     fontSize: 16,
     fontWeight: '700',
+  },
+  // Google Account Chooser Modal Styles
+  googleModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'flex-end',
+  },
+  googleModalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 16,
+  },
+  googleModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  googleModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  googleModalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  googleAccountDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginBottom: 12,
+  },
+  googleAccountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    marginBottom: 6,
+    backgroundColor: '#F8FAFC',
+  },
+  googleAccountRowBanned: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+  },
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarCircleNormal: {
+    backgroundColor: '#E2E8F0',
+  },
+  avatarCircleBanned: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  googleAccountName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  googleAccountEmail: {
+    fontSize: 13,
+    color: '#64748B',
+    marginRight: 6,
+  },
+  bannedBadge: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'center',
+  },
+  bannedBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  bannedReasonPreview: {
+    fontSize: 11,
+    color: '#DC2626',
+    fontWeight: '500',
+    marginTop: 3,
+    fontStyle: 'italic',
+  },
+  googleModalCancelButton: {
+    marginTop: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  googleModalCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#475569',
   },
 });
 
