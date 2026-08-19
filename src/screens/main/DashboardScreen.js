@@ -127,7 +127,7 @@ const formatOrderDateSafe = (dateVal) => {
     if (!isNaN(d.getTime())) {
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
-  } catch (_) {}
+  } catch (_) { }
   return 'Recently';
 };
 
@@ -161,7 +161,7 @@ const BRAND_LOGOS = {
 const HERO_CARDS = [
   { id: '1', title: 'Burger King', subtitle: 'Flame Grilled Burgers', logoAsset: BRAND_LOGOS['burger king'], rating: '4.5', deliveryTime: '25-35', deliveryType: 'Free' },
   { id: '2', title: 'Pizza Hut', subtitle: 'Delicious Pizzas', logoAsset: BRAND_LOGOS['pizza hut'], rating: '4.3', deliveryTime: '30-45', deliveryType: 'Free' },
-  { id: '3', title: 'KFC', subtitle: 'Finger Lickin Good', logoAsset: BRAND_LOGOS['kfc'], rating: '4.4', deliveryTime: '25-40', deliveryType: 'Free' },
+  { id: '3', title: 'KFC', subtitle: 'Finger Lickin Goo d', logoAsset: BRAND_LOGOS['kfc'], rating: '4.4', deliveryTime: '25-40', deliveryType: 'Free' },
   { id: '4', title: "McDonald's", subtitle: "I'm Lovin It", logoAsset: BRAND_LOGOS['mcdonald'], rating: '4.2', deliveryTime: '20-30', deliveryType: 'Free' },
   { id: '5', title: 'Subway', subtitle: 'Fresh Sandwiches', logoAsset: BRAND_LOGOS['subway'], rating: '4.6', deliveryTime: '15-25', deliveryType: 'Free' },
   { id: '6', title: 'Dunkin', subtitle: 'Coffee & Donuts', logoAsset: BRAND_LOGOS['dunkin'], rating: '4.5', deliveryTime: '20-35', deliveryType: 'Free' },
@@ -599,7 +599,7 @@ const DashboardScreen = ({ navigation, route }) => {
         if (res.success && Array.isArray(res.data)) {
           applyCategoriesList(res.data);
         }
-      }).catch(() => {});
+      }).catch(() => { });
 
       // 2. Real-time Firestore snapshot listener
       unsubscribe = categoriesAPI.subscribe(
@@ -610,7 +610,7 @@ const DashboardScreen = ({ navigation, route }) => {
           console.warn('❌ Categories live subscription error:', err);
           categoriesAPI.getAll().then(res => {
             if (res.success) applyCategoriesList(res.data);
-          }).catch(() => {});
+          }).catch(() => { });
         },
       );
     };
@@ -687,13 +687,13 @@ const DashboardScreen = ({ navigation, route }) => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     Animated.parallel([
-    Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-    Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 40, useNativeDriver: true }),
-    Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
-    Animated.timing(currentOrdersAnim, { toValue: 1, duration: 600, delay: 200, useNativeDriver: true }),
-    Animated.timing(orderInterestAnim, { toValue: 1, duration: 600, delay: 400, useNativeDriver: true }),
-    Animated.timing(recentOrdersAnim, { toValue: 1, duration: 600, delay: 600, useNativeDriver: true }),
-  ]).start();
+      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 40, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      Animated.timing(currentOrdersAnim, { toValue: 1, duration: 600, delay: 200, useNativeDriver: true }),
+      Animated.timing(orderInterestAnim, { toValue: 1, duration: 600, delay: 400, useNativeDriver: true }),
+      Animated.timing(recentOrdersAnim, { toValue: 1, duration: 600, delay: 600, useNativeDriver: true }),
+    ]).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1246,42 +1246,42 @@ const DashboardScreen = ({ navigation, route }) => {
                       </View>
 
 
-                    <View style={styles.heroTextContainer}>
-                      <Text style={styles.heroTitle}>{card.title}</Text>
-                      <Text style={styles.heroSubtitle}>{card.subtitle}</Text>
+                      <View style={styles.heroTextContainer}>
+                        <Text style={styles.heroTitle}>{card.title}</Text>
+                        <Text style={styles.heroSubtitle}>{card.subtitle}</Text>
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.heroStatsRow}>
-                    <View style={styles.heroStatItem}>
-                      <Ionicons name="star" size={14} color="#FFD700" />
-                      <Text style={styles.heroStatValue}>{card.rating}</Text>
-                      <Text style={styles.heroStatLabel}>Rating</Text>
+                    <View style={styles.heroStatsRow}>
+                      <View style={styles.heroStatItem}>
+                        <Ionicons name="star" size={14} color="#FFD700" />
+                        <Text style={styles.heroStatValue}>{card.rating}</Text>
+                        <Text style={styles.heroStatLabel}>Rating</Text>
+                      </View>
+                      <View style={styles.heroStatDivider} />
+                      <View style={styles.heroStatItem}>
+                        <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.85)" />
+                        <Text style={styles.heroStatValue}>{card.deliveryTime} min</Text>
+                        <Text style={styles.heroStatLabel}>Delivery Time</Text>
+                      </View>
+                      <View style={styles.heroStatDivider} />
+                      <View style={styles.heroStatItem}>
+                        <Ionicons name="bicycle-outline" size={14} color="rgba(255,255,255,0.85)" />
+                        <Text style={styles.heroStatValue}>{card.deliveryType}</Text>
+                        <Text style={styles.heroStatLabel}>Delivery</Text>
+                      </View>
                     </View>
-                    <View style={styles.heroStatDivider} />
-                    <View style={styles.heroStatItem}>
-                      <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.85)" />
-                      <Text style={styles.heroStatValue}>{card.deliveryTime} min</Text>
-                      <Text style={styles.heroStatLabel}>Delivery Time</Text>
-                    </View>
-                    <View style={styles.heroStatDivider} />
-                    <View style={styles.heroStatItem}>
-                      <Ionicons name="bicycle-outline" size={14} color="rgba(255,255,255,0.85)" />
-                      <Text style={styles.heroStatValue}>{card.deliveryType}</Text>
-                      <Text style={styles.heroStatLabel}>Delivery</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.heroOrderButton}
-                    activeOpacity={0.85}
-                    onPress={() => scrollViewRef.current?.scrollTo({ y: 300, animated: true })}
-                  >
-                    <Text style={styles.heroOrderButtonText}>Order Now</Text>
-                    <View style={styles.heroOrderButtonArrow}>
-                      <Ionicons name="chevron-forward" size={16} color="#fff" />
-                    </View>
-                  </TouchableOpacity>
-                </LinearGradient>
-              </View>
+                    <TouchableOpacity
+                      style={styles.heroOrderButton}
+                      activeOpacity={0.85}
+                      onPress={() => scrollViewRef.current?.scrollTo({ y: 300, animated: true })}
+                    >
+                      <Text style={styles.heroOrderButtonText}>Order Now</Text>
+                      <View style={styles.heroOrderButtonArrow}>
+                        <Ionicons name="chevron-forward" size={16} color="#fff" />
+                      </View>
+                    </TouchableOpacity>
+                  </LinearGradient>
+                </View>
               );
             })}
           </ScrollView>
