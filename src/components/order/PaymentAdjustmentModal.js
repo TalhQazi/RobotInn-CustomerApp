@@ -125,6 +125,8 @@ const PaymentAdjustmentModal = ({
     0,
   );
   const proposedAmount = parseFloat(
+    order.adjustmentNegotiation?.proposedPrice ??
+    order.bill?.proposedPrice ??
     order.bill?.total ??
     order.total ??
     adjustment.proposedNewAmount ??
@@ -135,7 +137,8 @@ const PaymentAdjustmentModal = ({
   const receiptImageUrl =
     order.bill?.receiptImageUrl || adjustment.receiptImageUrl || order.receiptUrl || null;
   const riderName = order.riderName || order.rider?.name || 'Rider';
-  const riderReason = adjustment.reason || 'Actual store prices differ from estimate.';
+  const adminNote = order.adjustmentNegotiation?.adminNotes || order.bill?.adminNotes || order.adminNotes || '';
+  const riderReason = adminNote ? `Admin Note: ${adminNote}` : (adjustment.reason || 'Actual store prices differ from estimate.');
 
   return (
     <Modal
@@ -309,12 +312,12 @@ const PaymentAdjustmentModal = ({
                 </View>
               </View>
 
-              {/* ── Rider Reason Note ── */}
+              {/* ── Note / Reason ── */}
               <View style={styles.reasonCard}>
                 <Text style={styles.sectionLabel}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={14} color="#666" />  Rider's Note
+                  <Ionicons name="chatbubble-ellipses-outline" size={14} color="#666" />  {adminNote ? 'Admin Negotiation Note' : "Rider's Note"}
                 </Text>
-                <Text style={styles.reasonText}>"{riderReason}"</Text>
+                <Text style={styles.reasonText}>"{adminNote || riderReason}"</Text>
               </View>
 
             </ScrollView>

@@ -25,6 +25,8 @@ import { fetchNearbyStoresFromGoogle, AREA_COORDINATES, resolveAreaCoords, getFa
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
 import PaymentAdjustmentModal from '../../components/order/PaymentAdjustmentModal';
 import CategoryDetectionService from '../../services/CategoryDetectionService';
 import StoreSearchService from '../../services/StoreSearchService';
@@ -496,13 +498,62 @@ const DashboardScreen = ({ navigation, route }) => {
     );
     if (adjustmentOrder) {
       const oid = adjustmentOrder.id || adjustmentOrder.orderId || adjustmentOrder._id;
-      if (oid && !shownAdjustmentOrderIds.current.has(oid)) {
-        shownAdjustmentOrderIds.current.add(oid);
+      const sentStamp =
+        adjustmentOrder.adjustmentNegotiation?.sentAt ||
+        adjustmentOrder.bill?.submittedAt ||
+        adjustmentOrder.updatedAt ||
+        String(adjustmentOrder.adjustmentNegotiation?.proposedPrice || adjustmentOrder.total || '');
+      const roundKey = `${oid}_${sentStamp}`;
+      if (oid && !shownAdjustmentOrderIds.current.has(roundKey)) {
+        shownAdjustmentOrderIds.current.add(roundKey);
         setAdjustmentModalOrder(adjustmentOrder);
         setAdjustmentModalVisible(true);
       }
     }
   }, [currentOrders]);
+
+  // Live real-time Firestore listener for customer's active orders
+  useEffect(() => {
+    let unsubscribe = null;
+    const user = auth().currentUser;
+    if (!user) return;
+
+    try {
+      unsubscribe = firestore()
+        .collection('orders')
+        .where('customer.id', '==', user.uid)
+        .onSnapshot(
+          snapshot => {
+            if (!snapshot) return;
+            const data = [];
+            snapshot.forEach(doc => {
+              data.push({ id: doc.id, ...doc.data() });
+            });
+            data.sort((a, b) => parseDateToMs(b.createdAt || b.date) - parseDateToMs(a.createdAt || a.date));
+            const seen = new Set();
+            const orders = data.filter(o => {
+              const uid = String(o.id || o._id || '');
+              if (!uid || seen.has(uid)) return false;
+              seen.add(uid);
+              return true;
+            });
+            setRecentOrders(orders.slice(0, 5));
+            setCurrentOrders(orders.filter(isOpenOrder));
+          },
+          err => {
+            console.warn('Live orders snapshot notice:', err?.message);
+          }
+        );
+    } catch (e) {
+      console.warn('Live orders snapshot listener error:', e);
+    }
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        try { unsubscribe(); } catch (_) { }
+      }
+    };
+  }, []);
 
   const isPendingOrder = (status) => {
     if (!status) return true;
